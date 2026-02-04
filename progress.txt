@@ -1,0 +1,41 @@
+## Phase 1 Complete: Monorepo + LMSR Engine + Market Manager + Position Tracker
+Date: 2026-02-04
+
+### What was done:
+1. **Monorepo scaffolding** — pnpm workspaces with root package.json, pnpm-workspace.yaml, tsconfig.base.json, .gitignore
+2. **packages/hub** — TypeScript + Jest setup with ts-jest
+3. **LMSR Engine** (`packages/hub/src/modules/lmsr/`)
+   - `types.ts` — Outcome type
+   - `engine.ts` — Stateless LMSR functions: costFunction, getPrice, getCost, getShares (binary search inverse), getNewQuantities
+   - Uses log-sum-exp trick for numerical stability with large quantities
+   - `engine.test.ts` — 23 tests covering prices, costs, shares, quantities, b-sensitivity
+4. **Market Manager** (`packages/hub/src/modules/market/`)
+   - `types.ts` — Market, MarketStatus, ResolutionResult types
+   - `manager.ts` — State machine (PENDING→OPEN→CLOSED→RESOLVED), market CRUD, resolution with position-based winner/loser calculation
+   - `manager.test.ts` — 21 tests covering creation, valid transitions, invalid transitions, timestamps, resolution logic
+5. **Position Tracker** (`packages/hub/src/modules/position/`)
+   - `types.ts` — Position type
+   - `tracker.ts` — In-memory position storage with market/user/specific queries and cleanup
+   - `tracker.test.ts` — 10 tests covering add, query, clear
+
+### Test results:
+- **54 tests passing** across 3 test suites
+- Command: `pnpm --filter hub test`
+
+### Architecture decisions:
+- LMSR engine is purely stateless functions (no class) — easy to test and compose
+- MarketManager is a class holding market state in a Map — supports multiple markets
+- PositionTracker is a class with in-memory array — simple and sufficient for MVP
+- Market resolution takes positions as a parameter (loose coupling with PositionTracker)
+- Binary search for getShares inverse (100 iterations, 1e-10 tolerance)
+
+### Next steps (Phase 2):
+- Yellow Network / Clearnode integration proof in `packages/hub/src/modules/clearnode/`
+- Reference `../yellow-quickstart/src/helpers/auth.ts` and `rpc.ts` for patterns
+- Prove: MM auth → app session create → close → balance check against sandbox
+
+### Tech stack so far:
+- pnpm 10.x workspaces
+- TypeScript 5.6
+- Jest 29 + ts-jest 29
+- Node 20+
