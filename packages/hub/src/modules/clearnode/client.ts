@@ -1,0 +1,172 @@
+import WebSocket from "ws";
+import { createWalletClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { sepolia } from "viem/chains";
+import {
+  createGetLedgerBalancesMessage,
+  parseGetLedgerBalancesResponse,
+  createSubmitAppStateMessage,
+  parseSubmitAppStateResponse,
+  createCloseAppSessionMessage,
+  parseCloseAppSessionResponse,
+  createTransferMessage,
+  parseTransferResponse,
+  RPCAppStateIntent,
+  type MessageSigner,
+} from "@erc7824/nitrolite";
+import { sendAndWait } from "./rpc.js";
+import { authenticate } from "./auth.js";
+import { requestFaucet } from "./faucet.js";
+import type {
+  ClearnodeConfig,
+  SubmitAppStateParams,
+  CloseSessionParams,
+  TransferParams,
+} from "./types.js";
+
+const INTENT_MAP: Record<string, RPCAppStateIntent> = {
+  operate: RPCAppStateIntent.Operate,
+  deposit: RPCAppStateIntent.Deposit,
+  withdraw: RPCAppStateIntent.Withdraw,
+};
+
+/**
+ * Hub-side client for communicating with the Yellow Network Clearnode.
+ * Authenticates as the Market Maker (MM) and manages app sessions for bets.
+ */
+export class ClearnodeClient {
+  private config: ClearnodeConfig;
+  private ws: WebSocket | null = null;
+  private signer: MessageSigner | null = null;
+  private mmAddress: string;
+
+  constructor(config: ClearnodeConfig) {
+    this.config = config;
+    this.mmAddress = privateKeyToAccount(config.mmPrivateKey).address;
+  }
+
+  /** Open WebSocket and authenticate as the MM wallet. */
+  async connect(): Promise<void> {
+    const ws = new WebSocket(this.config.url);
+
+    await new Promise<void>((resolve, reject) => {
+      ws.addEventListener("open", () => resolve());
+      ws.addEventListener("error", (e) =>
+        reject(new Error(`WebSocket connection failed: ${e.message}`)),
+      );
+    });
+
+    const account = privateKeyToAccount(this.config.mmPrivateKey);
+    const walletClient = createWalletClient({
+      account,
+      chain: sepolia,
+      transport: http(),
+    });
+
+    try {
+      this.signer = await authenticate(ws, walletClient, {
+        application: this.config.application,
+        allowances: this.config.allowances,
+      });
+    } catch (err) {
+      ws.close();
+      throw err;
+    }
+
+    this.ws = ws;
+  }
+
+  /** Close WebSocket connection. */
+  disconnect(): void {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+      this.signer = null;
+    }
+  }
+
+  /** Whether the client has an active connection and signer. */
+  isConnected(): boolean {
+    return (
+      this.ws !== null &&
+      this.ws.readyState === WebSocket.OPEN &&
+      this.signer !== null
+    );
+  }
+
+  /** Get the MM's unified balance for a given asset. */
+  async getBalance(asset = "ytest.usd"): Promise<string> {
+    this.assertConnected();
+
+    const msg = await createGetLedgerBalancesMessage(this.signer!);
+    const raw = await sendAndWait(this.ws!, msg, "get_ledger_balances");
+    const response = parseGetLedgerBalancesResponse(raw);
+
+    const entry = response.params.ledgerBalances.find(
+      (b) => b.asset === asset,
+    );
+    return entry ? entry.amount : "0";
+  }
+
+  /** Request test tokens from the sandbox faucet. */
+  async requestFaucet(): Promise<void> {
+    await requestFaucet(this.mmAddress, this.config.faucetUrl);
+  }
+
+  /** Submit an app state update (reallocate funds within an app session). */
+  async submitAppState(
+    params: SubmitAppStateParams,
+  ): Promise<{ version: number }> {
+    this.assertConnected();
+
+    const msg = await createSubmitAppStateMessage(this.signer!, {
+      app_session_id: params.appSessionId,
+      intent: INTENT_MAP[params.intent] ?? RPCAppStateIntent.Operate,
+      version: params.version,
+      allocations: params.allocations,
+      session_data: params.sessionData,
+    });
+
+    const raw = await sendAndWait(this.ws!, msg, "submit_app_state");
+    const response = parseSubmitAppStateResponse(raw);
+    return { version: response.params.version };
+  }
+
+  /** Close an app session with final allocations. */
+  async closeSession(params: CloseSessionParams): Promise<void> {
+    this.assertConnected();
+
+    const msg = await createCloseAppSessionMessage(this.signer!, {
+      app_session_id: params.appSessionId,
+      allocations: params.allocations,
+      session_data: params.sessionData,
+    });
+
+    const raw = await sendAndWait(this.ws!, msg, "close_app_session");
+    parseCloseAppSessionResponse(raw);
+  }
+
+  /** Transfer funds from MM's unified balance to another address. */
+  async transfer(params: TransferParams): Promise<void> {
+    this.assertConnected();
+
+    const msg = await createTransferMessage(this.signer!, {
+      destination: params.destination,
+      allocations: [{ asset: params.asset, amount: params.amount }],
+    });
+
+    const raw = await sendAndWait(this.ws!, msg, "transfer");
+    parseTransferResponse(raw);
+  }
+
+  /** Get the MM wallet address. */
+  getAddress(): string {
+    return this.mmAddress;
+  }
+
+  private assertConnected(): void {
+    if (!this.ws || !this.signer) {
+      throw new Error("ClearnodeClient is not connected");
+    }
+  }
+}

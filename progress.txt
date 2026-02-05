@@ -29,13 +29,54 @@ Date: 2026-02-04
 - Market resolution takes positions as a parameter (loose coupling with PositionTracker)
 - Binary search for getShares inverse (100 iterations, 1e-10 tolerance)
 
-### Next steps (Phase 2):
-- Yellow Network / Clearnode integration proof in `packages/hub/src/modules/clearnode/`
-- Reference `../yellow-quickstart/src/helpers/auth.ts` and `rpc.ts` for patterns
-- Prove: MM auth → app session create → close → balance check against sandbox
-
 ### Tech stack so far:
 - pnpm 10.x workspaces
 - TypeScript 5.6
 - Jest 29 + ts-jest 29
 - Node 20+
+
+---
+
+## Phase 2 Complete: Yellow Network / Clearnode Integration
+Date: 2026-02-04
+
+### What was done:
+1. **Dependencies added** — @erc7824/nitrolite@^0.5.3, viem@^2.45.1, ws@^8.19.0, @types/ws
+2. **Clearnode module** (`packages/hub/src/modules/clearnode/`)
+   - `types.ts` — ClearnodeConfig, SubmitAppStateParams, CloseSessionParams, TransferParams, AppSessionAllocation
+   - `rpc.ts` — sendAndWait() promise-based WebSocket correlator (adapted from yellow-quickstart)
+   - `auth.ts` — 3-step EIP-712 auth flow: auth_request → auth_challenge → auth_verify
+   - `faucet.ts` — requestFaucet() HTTP helper for sandbox token distribution
+   - `client.ts` — ClearnodeClient class: connect, disconnect, isConnected, getBalance, requestFaucet, submitAppState, closeSession, transfer
+   - `rpc.test.ts` — 6 tests (send, resolve, ignore, error, timeout, concurrent)
+   - `auth.test.ts` — 6 tests (request, challenge, verify, signer return, request fail, verify fail)
+   - `client.test.ts` — 24 tests (connection lifecycle 6, getBalance 4, faucet 2, submitAppState 4, closeSession 4, transfer 4)
+   - `client.live.test.ts` — 6 live tests gated by LIVE_TEST=true (auth, faucet, balance, disconnect)
+3. **Jest config updated** — Added moduleNameMapper to resolve .js imports for ESM-style TypeScript
+
+### Test results:
+- **90 mock tests passing** across 6 test suites
+- **6 live tests skipped** (run with LIVE_TEST=true pnpm --filter hub test)
+- Command: `pnpm --filter hub test`
+
+### Architecture decisions:
+- ClearnodeClient wraps all Clearnode operations behind a clean interface
+- Auth flow generates ephemeral session keys (lightweight ECDSA for repeated RPC calls)
+- sendAndWait correlates request/response by RPC method name, handles errors and timeouts
+- Faucet is a standalone helper (reusable for bettor funding in Phase 3)
+- Live tests use throwaway ephemeral wallets against sandbox — no cleanup needed
+- Module imports use .js extensions (ESM convention) with Jest moduleNameMapper for resolution
+
+### How PulsePlay uses these operations:
+- Fund MM (test): requestFaucet()
+- Bet rejected: closeSession() — return funds to user
+- Loser resolution: submitAppState() (reallocate user→MM) → closeSession()
+- Winner resolution: closeSession() (return bet) → transfer() (pay profit from MM→user)
+- Check liquidity: getBalance() — MM's available funds
+
+### Next steps (Phase 3):
+- Hub REST + WebSocket APIs (Fastify)
+- POST /api/bet, GET /api/market, POST /api/oracle/*, POST /api/faucet/*
+- WebSocket broadcast for real-time odds/market updates
+- Mock Oracle with auto-play mode
+- Wire LMSR + Market + Position + Clearnode into API endpoints
