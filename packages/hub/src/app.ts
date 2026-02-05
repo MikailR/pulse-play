@@ -8,6 +8,7 @@ import { registerBetRoutes } from './api/bet.routes.js';
 import { registerOracleRoutes } from './api/oracle.routes.js';
 import { registerFaucetRoutes } from './api/faucet.routes.js';
 import { registerAdminRoutes } from './api/admin.routes.js';
+import type { WsStateSync } from './api/types.js';
 
 export async function buildApp(ctx: AppContext) {
   const app = Fastify({ logger: false });
@@ -38,6 +39,35 @@ export async function buildApp(ctx: AppContext) {
     const address = (req.query as any)?.address as string | undefined;
     ctx.ws.addConnection(socket, address);
     ctx.log.wsConnect(address ?? null, ctx.ws.getConnectionCount());
+
+    // Send initial state sync to the new client
+    const market = ctx.marketManager.getCurrentMarket();
+    const marketResp = market
+      ? {
+          id: market.id,
+          status: market.status,
+          outcome: market.outcome,
+          qBall: market.qBall,
+          qStrike: market.qStrike,
+          b: market.b,
+        }
+      : null;
+
+    const positions = market
+      ? ctx.positionTracker.getPositionsByMarket(market.id)
+      : [];
+
+    const stateSync: WsStateSync = {
+      type: 'STATE_SYNC',
+      state: {
+        market: marketResp,
+        gameState: ctx.oracle.getGameState(),
+        positionCount: positions.length,
+        connectionCount: ctx.ws.getConnectionCount(),
+      },
+      positions,
+    };
+    ctx.ws.sendToSocket(socket, stateSync);
 
     socket.on('close', () => {
       ctx.log.wsDisconnect(address ?? null, ctx.ws.getConnectionCount());

@@ -45,8 +45,9 @@ describe('usePositions', () => {
     mockGetPositions.mockResolvedValueOnce({
       positions: [
         {
+          address: '0xabc',
           marketId: 'market-1',
-          outcome: 'Ball',
+          outcome: 'BALL',
           shares: 10,
           costPaid: 5,
           appSessionId: 'session-1',
@@ -65,23 +66,25 @@ describe('usePositions', () => {
 
     expect(mockGetPositions).toHaveBeenCalledWith('0xabc');
     expect(result.current.positions).toHaveLength(1);
-    expect(result.current.positions[0].outcome).toBe('Ball');
+    expect(result.current.positions[0].outcome).toBe('BALL');
   });
 
   it('filters positions by marketId', async () => {
     mockGetPositions.mockResolvedValueOnce({
       positions: [
         {
+          address: '0xabc',
           marketId: 'market-1',
-          outcome: 'Ball',
+          outcome: 'BALL',
           shares: 10,
           costPaid: 5,
           appSessionId: 'session-1',
           timestamp: Date.now(),
         },
         {
+          address: '0xabc',
           marketId: 'market-2',
-          outcome: 'Strike',
+          outcome: 'STRIKE',
           shares: 5,
           costPaid: 2.5,
           appSessionId: 'session-2',
@@ -121,8 +124,9 @@ describe('usePositions', () => {
       .mockResolvedValueOnce({
         positions: [
           {
+            address: '0xabc',
             marketId: 'market-1',
-            outcome: 'Ball',
+            outcome: 'BALL',
             shares: 10,
             costPaid: 5,
             appSessionId: 'session-1',
@@ -154,7 +158,7 @@ describe('usePositions', () => {
         type: 'MARKET_STATUS',
         status: 'RESOLVED',
         marketId: 'market-1',
-        outcome: 'Ball',
+        outcome: 'BALL',
       });
       await flushPromises();
     });

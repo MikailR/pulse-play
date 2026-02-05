@@ -32,7 +32,31 @@ export interface WsBetResult {
   loss?: number;
 }
 
-export type WsMessage = WsOddsUpdate | WsMarketStatus | WsGameState | WsBetResult;
+export interface WsPositionAdded {
+  type: 'POSITION_ADDED';
+  position: Position;
+  positionCount: number;
+}
+
+export interface WsConnectionCount {
+  type: 'CONNECTION_COUNT';
+  count: number;
+}
+
+export interface WsStateSync {
+  type: 'STATE_SYNC';
+  state: AdminStateResponse;
+  positions: Position[];
+}
+
+export type WsMessage =
+  | WsOddsUpdate
+  | WsMarketStatus
+  | WsGameState
+  | WsBetResult
+  | WsPositionAdded
+  | WsConnectionCount
+  | WsStateSync;
 
 // ── Admin state response ──
 

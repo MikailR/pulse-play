@@ -40,11 +40,10 @@ hubUrl = hubUrl.replace(/\/$/, '');
 
 // Derive WebSocket URL from HTTP URL
 const wsUrl = hubUrl.replace(/^http/, 'ws') + '/ws';
-const restUrl = hubUrl;
 
 // Render the app
 const { waitUntilExit } = render(
-  <App wsUrl={wsUrl} restUrl={restUrl} />
+  <App wsUrl={wsUrl} />
 );
 
 // Wait for exit

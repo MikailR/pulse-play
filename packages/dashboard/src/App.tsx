@@ -1,17 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { useWebSocket } from './hooks/useWebSocket.js';
-import { useAdminState } from './hooks/useAdminState.js';
 import { MarketPanel } from './components/MarketPanel.js';
 import { PositionsPanel } from './components/PositionsPanel.js';
 import { EventLog } from './components/EventLog.js';
 import { SystemInfo } from './components/SystemInfo.js';
 import { formatWsMessage } from './utils/formatters.js';
-import type { EventLogEntry, WsMessage } from './types.js';
+import type {
+  EventLogEntry,
+  WsMessage,
+  AdminStateResponse,
+  Position,
+} from './types.js';
 
 interface AppProps {
   wsUrl: string;
-  restUrl: string;
 }
 
 const MAX_EVENT_LOG_SIZE = 100;
@@ -35,16 +38,18 @@ function calculatePrices(market: { qBall: number; qStrike: number; b: number } |
   };
 }
 
-export function App({ wsUrl, restUrl }: AppProps) {
+export function App({ wsUrl }: AppProps) {
   const { exit } = useApp();
   const [events, setEvents] = useState<EventLogEntry[]>([]);
   const [prices, setPrices] = useState({ priceBall: 0.5, priceStrike: 0.5 });
 
+  // State derived from WebSocket messages (no more polling)
+  const [state, setState] = useState<AdminStateResponse | null>(null);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
   // Connect to WebSocket for real-time events
   const { connected, lastMessage, error: wsError, reconnectAttempts } = useWebSocket(wsUrl);
-
-  // Poll admin state for system info
-  const { state, positions, error: adminError, loading: adminLoading } = useAdminState(restUrl);
 
   // Handle keyboard input
   useInput((input) => {
@@ -53,42 +58,130 @@ export function App({ wsUrl, restUrl }: AppProps) {
     }
   });
 
-  // Add new WebSocket messages to event log
+  // Process WebSocket messages to update state
+  const processMessage = useCallback((msg: WsMessage) => {
+    switch (msg.type) {
+      case 'STATE_SYNC':
+        // Full state sync on connect
+        setState(msg.state);
+        setPositions(msg.positions);
+        setInitialized(true);
+        // Calculate initial prices from state
+        if (msg.state.market) {
+          setPrices(calculatePrices(msg.state.market));
+        }
+        break;
+
+      case 'POSITION_ADDED':
+        // Add new position to the list
+        setPositions((prev) => [...prev, msg.position]);
+        // Update position count in state
+        setState((prev) =>
+          prev ? { ...prev, positionCount: msg.positionCount } : prev
+        );
+        break;
+
+      case 'CONNECTION_COUNT':
+        // Update connection count
+        setState((prev) =>
+          prev ? { ...prev, connectionCount: msg.count } : prev
+        );
+        break;
+
+      case 'MARKET_STATUS':
+        // Update market status
+        setState((prev) => {
+          if (!prev) return prev;
+          if (!prev.market) {
+            // New market created - we'll get full details via STATE_SYNC on next connect
+            // For now, just indicate market exists with status
+            return {
+              ...prev,
+              market: {
+                id: msg.marketId,
+                status: msg.status,
+                outcome: msg.outcome ?? null,
+                qBall: 0,
+                qStrike: 0,
+                b: 100,
+              },
+            };
+          }
+          return {
+            ...prev,
+            market: {
+              ...prev.market,
+              status: msg.status,
+              outcome: msg.outcome ?? prev.market.outcome,
+            },
+          };
+        });
+        // Clear positions on new market (OPEN status with new marketId)
+        if (msg.status === 'OPEN') {
+          setState((prev) => {
+            if (prev?.market?.id !== msg.marketId) {
+              // New market - clear positions
+              setPositions([]);
+              return prev ? { ...prev, positionCount: 0 } : prev;
+            }
+            return prev;
+          });
+        }
+        break;
+
+      case 'GAME_STATE':
+        // Update game state
+        setState((prev) =>
+          prev ? { ...prev, gameState: { active: msg.active } } : prev
+        );
+        break;
+
+      case 'ODDS_UPDATE':
+        // Update prices
+        setPrices({
+          priceBall: msg.priceBall,
+          priceStrike: msg.priceStrike,
+        });
+        break;
+
+      case 'BET_RESULT':
+        // Just logged, no state update needed
+        break;
+    }
+  }, []);
+
+  // Handle incoming WebSocket messages
   useEffect(() => {
     if (lastMessage) {
-      const entry: EventLogEntry = {
-        timestamp: new Date(),
-        type: lastMessage.type,
-        message: formatWsMessage(lastMessage),
-        raw: lastMessage,
-      };
+      // Add to event log (except STATE_SYNC which is just initialization)
+      if (lastMessage.type !== 'STATE_SYNC' && lastMessage.type !== 'CONNECTION_COUNT') {
+        const entry: EventLogEntry = {
+          timestamp: new Date(),
+          type: lastMessage.type,
+          message: formatWsMessage(lastMessage),
+          raw: lastMessage,
+        };
 
-      setEvents((prev) => {
-        const next = [...prev, entry];
-        // Trim to max size
-        if (next.length > MAX_EVENT_LOG_SIZE) {
-          return next.slice(-MAX_EVENT_LOG_SIZE);
-        }
-        return next;
-      });
-
-      // Update prices from ODDS_UPDATE messages
-      if (lastMessage.type === 'ODDS_UPDATE') {
-        setPrices({
-          priceBall: lastMessage.priceBall,
-          priceStrike: lastMessage.priceStrike,
+        setEvents((prev) => {
+          const next = [...prev, entry];
+          if (next.length > MAX_EVENT_LOG_SIZE) {
+            return next.slice(-MAX_EVENT_LOG_SIZE);
+          }
+          return next;
         });
       }
-    }
-  }, [lastMessage]);
 
-  // Update prices from polled state
-  useEffect(() => {
-    if (state?.market) {
-      const calculated = calculatePrices(state.market);
-      setPrices(calculated);
+      // Process message to update state
+      processMessage(lastMessage);
     }
-  }, [state]);
+  }, [lastMessage, processMessage]);
+
+  // Reset state on disconnect
+  useEffect(() => {
+    if (!connected) {
+      setInitialized(false);
+    }
+  }, [connected]);
 
   return (
     <Box flexDirection="column">
@@ -123,8 +216,8 @@ export function App({ wsUrl, restUrl }: AppProps) {
             wsError={wsError}
             reconnectAttempts={reconnectAttempts}
             state={state}
-            adminError={adminError}
-            adminLoading={adminLoading}
+            adminError={null}
+            adminLoading={!initialized && connected}
           />
           <EventLog events={events} maxDisplay={8} />
         </Box>
@@ -133,7 +226,7 @@ export function App({ wsUrl, restUrl }: AppProps) {
       {/* Footer - connection info */}
       <Box paddingX={1}>
         <Text color="gray" dimColor>
-          WS: {wsUrl} | REST: {restUrl}
+          WS: {wsUrl}
         </Text>
       </Box>
     </Box>

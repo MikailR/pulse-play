@@ -25,7 +25,7 @@ describe('api', () => {
       const request: BetRequest = {
         address: '0x123',
         marketId: 'market-1',
-        outcome: 'Ball',
+        outcome: 'BALL',
         amount: 10,
         appSessionId: 'session-1',
       };
@@ -66,7 +66,7 @@ describe('api', () => {
         placeBet({
           address: '0x123',
           marketId: 'market-1',
-          outcome: 'Ball',
+          outcome: 'BALL',
           amount: 10,
           appSessionId: 'session-1',
         })
@@ -107,8 +107,9 @@ describe('api', () => {
       const positionsResponse: PositionsResponse = {
         positions: [
           {
+            address: '0xabc',
             marketId: 'market-1',
-            outcome: 'Ball',
+            outcome: 'BALL',
             shares: 10,
             costPaid: 5,
             appSessionId: 'session-1',
@@ -128,7 +129,7 @@ describe('api', () => {
         'http://localhost:3001/api/positions/0xabc'
       );
       expect(result.positions).toHaveLength(1);
-      expect(result.positions[0].outcome).toBe('Ball');
+      expect(result.positions[0].outcome).toBe('BALL');
     });
   });
 
@@ -188,7 +189,7 @@ describe('api', () => {
         }),
       });
 
-      const result = await resolveOutcome({ outcome: 'Ball' });
+      const result = await resolveOutcome({ outcome: 'BALL' });
 
       expect(result.winners).toContain('0x111');
       expect(result.losers).toContain('0x222');

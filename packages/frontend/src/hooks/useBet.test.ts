@@ -15,7 +15,7 @@ describe('useBet', () => {
 
     let response: unknown;
     await act(async () => {
-      response = await result.current.bet('Ball', 10);
+      response = await result.current.bet('BALL', 10);
     });
 
     expect(response).toBeNull();
@@ -42,13 +42,13 @@ describe('useBet', () => {
 
     let response: unknown;
     await act(async () => {
-      response = await result.current.bet('Ball', 10);
+      response = await result.current.bet('BALL', 10);
     });
 
     expect(mockPlaceBet).toHaveBeenCalledWith({
       address: '0x123',
       marketId: 'market-1',
-      outcome: 'Ball',
+      outcome: 'BALL',
       amount: 10,
       appSessionId: 'session-1',
     });
@@ -75,7 +75,7 @@ describe('useBet', () => {
     );
 
     await act(async () => {
-      await result.current.bet('Strike', 5);
+      await result.current.bet('STRIKE', 5);
     });
 
     expect(result.current.error).toBe('Market not open');
@@ -96,7 +96,7 @@ describe('useBet', () => {
     );
 
     await act(async () => {
-      await result.current.bet('Ball', 10);
+      await result.current.bet('BALL', 10);
     });
 
     expect(result.current.error).toBe('Network error');
@@ -124,7 +124,7 @@ describe('useBet', () => {
 
     let betPromise: Promise<unknown>;
     act(() => {
-      betPromise = result.current.bet('Ball', 10);
+      betPromise = result.current.bet('BALL', 10);
     });
 
     await waitFor(() => {

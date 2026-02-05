@@ -75,17 +75,22 @@ pnpm dev --help
 
 | Type | Description |
 |------|-------------|
+| `STATE_SYNC` | Initial state snapshot sent on connect |
 | `ODDS_UPDATE` | Market odds changed after a bet |
 | `MARKET_STATUS` | Market state changed (PENDING → OPEN → CLOSED → RESOLVED) |
 | `GAME_STATE` | Game activated or deactivated |
 | `BET_RESULT` | Bettor received win/loss notification |
+| `POSITION_ADDED` | New bet position created |
+| `CONNECTION_COUNT` | WebSocket client count changed |
 
 ## Architecture
 
-The dashboard runs as a separate process and connects to the hub via:
+The dashboard runs as a separate process and connects to the hub via **WebSocket only** (`ws://host:port/ws`).
 
-1. **WebSocket** (`ws://host:port/ws`) - Real-time event streaming
-2. **REST API** (`http://host:port/api/admin/state`) - Polling for system state
+All state is derived from WebSocket messages:
+- `STATE_SYNC` provides initial state on connection
+- Incremental updates via `POSITION_ADDED`, `CONNECTION_COUNT`, etc.
+- No REST polling required (reduces backend load)
 
 This separation means the dashboard can be started/stopped without affecting the hub.
 

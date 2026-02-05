@@ -1,45 +1,69 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { StateDisplay } from './StateDisplay';
-import * as api from '@/lib/api';
+import * as MarketProvider from '@/providers/MarketProvider';
 
-jest.mock('@/lib/api');
+jest.mock('@/providers/MarketProvider', () => ({
+  useMarket: jest.fn(),
+}));
 
-const mockGetAdminState = api.getAdminState as jest.MockedFunction<
-  typeof api.getAdminState
->;
+const mockUseMarket = MarketProvider.useMarket as jest.Mock;
 
 describe('StateDisplay', () => {
   beforeEach(() => {
-    mockGetAdminState.mockReset();
-    jest.useFakeTimers();
+    mockUseMarket.mockReset();
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('shows loading state initially', () => {
-    mockGetAdminState.mockImplementation(() => new Promise(() => {}));
+  it('shows loading state when isLoading is true', () => {
+    mockUseMarket.mockReturnValue({
+      market: null,
+      gameActive: false,
+      positionCount: 0,
+      connectionCount: 0,
+      isLoading: true,
+      error: null,
+    });
 
     render(<StateDisplay />);
 
     expect(screen.getByTestId('state-loading')).toBeInTheDocument();
   });
 
-  it('displays system state', async () => {
-    mockGetAdminState.mockResolvedValueOnce({
-      market: { id: 'market-1', status: 'OPEN', outcome: null, qBall: 0, qStrike: 0, b: 100 },
-      gameState: { active: true },
-      positionCount: 5,
-      connectionCount: 3,
+  it('shows error state when error exists', () => {
+    mockUseMarket.mockReturnValue({
+      market: null,
+      gameActive: false,
+      positionCount: 0,
+      connectionCount: 0,
+      isLoading: false,
+      error: 'Network error',
     });
 
     render(<StateDisplay />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('state-display')).toBeInTheDocument();
+    expect(screen.getByTestId('state-error')).toBeInTheDocument();
+    expect(screen.getByTestId('state-error')).toHaveTextContent('Network error');
+  });
+
+  it('displays system state from context', () => {
+    mockUseMarket.mockReturnValue({
+      market: {
+        id: 'market-1',
+        status: 'OPEN',
+        outcome: null,
+        qBall: 0,
+        qStrike: 0,
+        b: 100,
+      },
+      gameActive: true,
+      positionCount: 5,
+      connectionCount: 3,
+      isLoading: false,
+      error: null,
     });
 
+    render(<StateDisplay />);
+
+    expect(screen.getByTestId('state-display')).toBeInTheDocument();
     expect(screen.getByTestId('state-game-active')).toHaveTextContent('Yes');
     expect(screen.getByTestId('state-market-id')).toHaveTextContent('market-1');
     expect(screen.getByTestId('state-market-status')).toHaveTextContent('OPEN');
@@ -47,15 +71,20 @@ describe('StateDisplay', () => {
     expect(screen.getByTestId('state-connection-count')).toHaveTextContent('3');
   });
 
-  it('shows error on failure', async () => {
-    mockGetAdminState.mockRejectedValueOnce(new Error('Network error'));
+  it('shows game inactive state', () => {
+    mockUseMarket.mockReturnValue({
+      market: null,
+      gameActive: false,
+      positionCount: 0,
+      connectionCount: 1,
+      isLoading: false,
+      error: null,
+    });
 
     render(<StateDisplay />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('state-error')).toBeInTheDocument();
-    });
-
-    expect(screen.getByTestId('state-error')).toHaveTextContent('Network error');
+    expect(screen.getByTestId('state-game-active')).toHaveTextContent('No');
+    expect(screen.getByTestId('state-market-id')).toHaveTextContent('-');
+    expect(screen.getByTestId('state-market-status')).toHaveTextContent('None');
   });
 });

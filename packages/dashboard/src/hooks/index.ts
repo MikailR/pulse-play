@@ -1,2 +1,2 @@
 export { useWebSocket, type UseWebSocketResult } from './useWebSocket.js';
-export { useAdminState, type UseAdminStateResult } from './useAdminState.js';
+// useAdminState is deprecated - state is now derived from WebSocket messages

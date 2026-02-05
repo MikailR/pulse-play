@@ -13,7 +13,7 @@ function PositionCard({ position }: { position: Position }) {
   return (
     <div
       className={`bg-gray-700/50 rounded-lg p-4 border ${
-        position.outcome === 'Ball'
+        position.outcome === 'BALL'
           ? 'border-blue-500/30'
           : 'border-red-500/30'
       }`}
@@ -22,7 +22,7 @@ function PositionCard({ position }: { position: Position }) {
       <div className="flex justify-between items-center mb-2">
         <span
           className={`text-sm font-medium ${
-            position.outcome === 'Ball' ? 'text-blue-400' : 'text-red-400'
+            position.outcome === 'BALL' ? 'text-blue-400' : 'text-red-400'
           }`}
           data-testid="position-outcome"
         >

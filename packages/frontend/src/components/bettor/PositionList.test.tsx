@@ -88,8 +88,9 @@ describe('PositionList', () => {
     mockGetPositions.mockResolvedValueOnce({
       positions: [
         {
+          address: '0x123',
           marketId: 'market-1',
-          outcome: 'Ball',
+          outcome: 'BALL',
           shares: 10.5,
           costPaid: 5.25,
           appSessionId: 'session-1',
@@ -104,7 +105,7 @@ describe('PositionList', () => {
       expect(screen.getByTestId('position-market-1')).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId('position-outcome')).toHaveTextContent('Ball');
+    expect(screen.getByTestId('position-outcome')).toHaveTextContent('BALL');
     expect(screen.getByTestId('position-shares')).toHaveTextContent('10.50');
     expect(screen.getByTestId('position-cost')).toHaveTextContent('$5.25');
   });

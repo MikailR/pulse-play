@@ -38,14 +38,24 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
     ctx.marketManager.updateQuantities(marketId, qBall, qStrike);
 
     // Record position
-    ctx.positionTracker.addPosition({
+    const timestamp = Date.now();
+    const position = {
       address,
       marketId,
       outcome,
       shares,
       costPaid: amount,
       appSessionId,
-      timestamp: Date.now(),
+      timestamp,
+    };
+    ctx.positionTracker.addPosition(position);
+
+    // Broadcast position added
+    const positionCount = ctx.positionTracker.getPositionsByMarket(marketId).length;
+    ctx.ws.broadcast({
+      type: 'POSITION_ADDED',
+      position,
+      positionCount,
     });
 
     // Compute new prices

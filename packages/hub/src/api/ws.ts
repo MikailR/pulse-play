@@ -18,6 +18,9 @@ export class WsManager {
     }
 
     ws.on('close', () => this.removeConnection(ws));
+
+    // Broadcast new connection count to all clients
+    this.broadcastConnectionCount();
   }
 
   removeConnection(ws: WebSocket): void {
@@ -33,6 +36,16 @@ export class WsManager {
         }
       }
     }
+
+    // Broadcast updated connection count to remaining clients
+    this.broadcastConnectionCount();
+  }
+
+  private broadcastConnectionCount(): void {
+    this.broadcast({
+      type: 'CONNECTION_COUNT',
+      count: this.connections.size,
+    });
   }
 
   broadcast(msg: WsMessage): void {
@@ -53,6 +66,12 @@ export class WsManager {
       if (ws.readyState === 1) {
         ws.send(data);
       }
+    }
+  }
+
+  sendToSocket(ws: WebSocket, msg: WsMessage): void {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify(msg));
     }
   }
 

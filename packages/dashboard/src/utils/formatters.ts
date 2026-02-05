@@ -61,6 +61,12 @@ export function formatWsMessage(msg: WsMessage): string {
       return msg.result === 'WIN'
         ? `WIN $${msg.payout?.toFixed(2)}`
         : `LOSS $${msg.loss?.toFixed(2)}`;
+    case 'POSITION_ADDED':
+      return `${truncateAddress(msg.position.address)} ${msg.position.outcome} ${formatShares(msg.position.shares)} ${formatDollars(msg.position.costPaid)}`;
+    case 'CONNECTION_COUNT':
+      return `${msg.count} clients`;
+    case 'STATE_SYNC':
+      return `Synced (${msg.positions.length} positions)`;
     default:
       return JSON.stringify(msg);
   }

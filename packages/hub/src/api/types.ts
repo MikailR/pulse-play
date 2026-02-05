@@ -75,7 +75,10 @@ export type WsMessageType =
   | 'ODDS_UPDATE'
   | 'MARKET_STATUS'
   | 'GAME_STATE'
-  | 'BET_RESULT';
+  | 'BET_RESULT'
+  | 'POSITION_ADDED'
+  | 'CONNECTION_COUNT'
+  | 'STATE_SYNC';
 
 export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
@@ -104,4 +107,44 @@ export interface WsBetResult {
   loss?: number;
 }
 
-export type WsMessage = WsOddsUpdate | WsMarketStatus | WsGameState | WsBetResult;
+export interface WsPositionAdded {
+  type: 'POSITION_ADDED';
+  position: {
+    address: string;
+    marketId: string;
+    outcome: Outcome;
+    shares: number;
+    costPaid: number;
+    appSessionId: string;
+    timestamp: number;
+  };
+  positionCount: number;
+}
+
+export interface WsConnectionCount {
+  type: 'CONNECTION_COUNT';
+  count: number;
+}
+
+export interface WsStateSync {
+  type: 'STATE_SYNC';
+  state: AdminStateResponse;
+  positions: Array<{
+    address: string;
+    marketId: string;
+    outcome: Outcome;
+    shares: number;
+    costPaid: number;
+    appSessionId: string;
+    timestamp: number;
+  }>;
+}
+
+export type WsMessage =
+  | WsOddsUpdate
+  | WsMarketStatus
+  | WsGameState
+  | WsBetResult
+  | WsPositionAdded
+  | WsConnectionCount
+  | WsStateSync;

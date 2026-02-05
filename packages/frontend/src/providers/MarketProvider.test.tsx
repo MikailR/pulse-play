@@ -15,8 +15,16 @@ const mockGetMarket = api.getMarket as jest.MockedFunction<typeof api.getMarket>
 
 // Consumer component for testing
 function MarketConsumer() {
-  const { market, priceBall, priceStrike, gameActive, isLoading, error } =
-    useMarket();
+  const {
+    market,
+    priceBall,
+    priceStrike,
+    gameActive,
+    positionCount,
+    connectionCount,
+    isLoading,
+    error,
+  } = useMarket();
   return (
     <div>
       <span data-testid="loading">{isLoading ? 'yes' : 'no'}</span>
@@ -26,6 +34,8 @@ function MarketConsumer() {
       <span data-testid="price-ball">{priceBall}</span>
       <span data-testid="price-strike">{priceStrike}</span>
       <span data-testid="game-active">{gameActive ? 'yes' : 'no'}</span>
+      <span data-testid="position-count">{positionCount}</span>
+      <span data-testid="connection-count">{connectionCount}</span>
     </div>
   );
 }
@@ -199,7 +209,7 @@ describe('MarketProvider', () => {
         market: {
           id: 'market-1',
           status: 'RESOLVED',
-          outcome: 'Ball',
+          outcome: 'BALL',
           qBall: 10,
           qStrike: 5,
           b: 100,
@@ -239,6 +249,155 @@ describe('MarketProvider', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('market-status')).toHaveTextContent('CLOSED');
+    });
+  });
+
+  it('handles STATE_SYNC message on connect', async () => {
+    mockGetMarket.mockResolvedValueOnce({
+      market: null,
+      priceBall: 0.5,
+      priceStrike: 0.5,
+    });
+
+    render(
+      <TestWrapper>
+        <MarketProvider>
+          <MarketConsumer />
+        </MarketProvider>
+      </TestWrapper>
+    );
+
+    const ws = MockWebSocket.getLastInstance()!;
+
+    await act(async () => {
+      ws.simulateOpen();
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('no');
+    });
+
+    // Send STATE_SYNC
+    await act(async () => {
+      ws.simulateMessage({
+        type: 'STATE_SYNC',
+        state: {
+          market: {
+            id: 'market-2',
+            status: 'OPEN',
+            outcome: null,
+            qBall: 10,
+            qStrike: 10,
+            b: 100,
+          },
+          gameState: { active: true },
+          positionCount: 5,
+          connectionCount: 3,
+        },
+        positions: [],
+      });
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('market-id')).toHaveTextContent('market-2');
+      expect(screen.getByTestId('game-active')).toHaveTextContent('yes');
+      expect(screen.getByTestId('position-count')).toHaveTextContent('5');
+      expect(screen.getByTestId('connection-count')).toHaveTextContent('3');
+    });
+  });
+
+  it('updates connection count from CONNECTION_COUNT message', async () => {
+    mockGetMarket.mockResolvedValueOnce({
+      market: null,
+      priceBall: 0.5,
+      priceStrike: 0.5,
+    });
+
+    render(
+      <TestWrapper>
+        <MarketProvider>
+          <MarketConsumer />
+        </MarketProvider>
+      </TestWrapper>
+    );
+
+    const ws = MockWebSocket.getLastInstance()!;
+
+    await act(async () => {
+      ws.simulateOpen();
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('no');
+    });
+
+    expect(screen.getByTestId('connection-count')).toHaveTextContent('0');
+
+    // Send CONNECTION_COUNT
+    await act(async () => {
+      ws.simulateMessage({
+        type: 'CONNECTION_COUNT',
+        count: 7,
+      });
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('connection-count')).toHaveTextContent('7');
+    });
+  });
+
+  it('updates position count from POSITION_ADDED message', async () => {
+    mockGetMarket.mockResolvedValueOnce({
+      market: null,
+      priceBall: 0.5,
+      priceStrike: 0.5,
+    });
+
+    render(
+      <TestWrapper>
+        <MarketProvider>
+          <MarketConsumer />
+        </MarketProvider>
+      </TestWrapper>
+    );
+
+    const ws = MockWebSocket.getLastInstance()!;
+
+    await act(async () => {
+      ws.simulateOpen();
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('no');
+    });
+
+    expect(screen.getByTestId('position-count')).toHaveTextContent('0');
+
+    // Send POSITION_ADDED
+    await act(async () => {
+      ws.simulateMessage({
+        type: 'POSITION_ADDED',
+        position: {
+          address: '0x123',
+          marketId: 'market-1',
+          outcome: 'BALL',
+          shares: 10,
+          costPaid: 5,
+          appSessionId: 'sess-1',
+          timestamp: Date.now(),
+        },
+        positionCount: 4,
+      });
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('position-count')).toHaveTextContent('4');
     });
   });
 });

@@ -133,6 +133,64 @@ describe('formatWsMessage', () => {
     };
     expect(formatWsMessage(msg)).toBe('LOSS $5.00');
   });
+
+  it('formats POSITION_ADDED messages', () => {
+    const msg: WsMessage = {
+      type: 'POSITION_ADDED',
+      position: {
+        address: '0x1234567890abcdef1234567890abcdef12345678',
+        marketId: 'market-1',
+        outcome: 'BALL',
+        shares: 10.5,
+        costPaid: 5.25,
+        appSessionId: 'sess-1',
+        timestamp: 1234567890,
+      },
+      positionCount: 3,
+    };
+    expect(formatWsMessage(msg)).toBe('0x1234..5678 BALL 10.50 $5.25');
+  });
+
+  it('formats CONNECTION_COUNT messages', () => {
+    const msg: WsMessage = {
+      type: 'CONNECTION_COUNT',
+      count: 5,
+    };
+    expect(formatWsMessage(msg)).toBe('5 clients');
+  });
+
+  it('formats STATE_SYNC messages', () => {
+    const msg: WsMessage = {
+      type: 'STATE_SYNC',
+      state: {
+        market: null,
+        gameState: { active: false },
+        positionCount: 0,
+        connectionCount: 1,
+      },
+      positions: [
+        {
+          address: '0x111',
+          marketId: 'm1',
+          outcome: 'BALL',
+          shares: 1,
+          costPaid: 1,
+          appSessionId: 's1',
+          timestamp: 1,
+        },
+        {
+          address: '0x222',
+          marketId: 'm1',
+          outcome: 'STRIKE',
+          shares: 2,
+          costPaid: 2,
+          appSessionId: 's2',
+          timestamp: 2,
+        },
+      ],
+    };
+    expect(formatWsMessage(msg)).toBe('Synced (2 positions)');
+  });
 });
 
 describe('getStatusColor', () => {

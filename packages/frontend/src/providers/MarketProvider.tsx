@@ -17,6 +17,8 @@ interface MarketState {
   priceBall: number;
   priceStrike: number;
   gameActive: boolean;
+  positionCount: number;
+  connectionCount: number;
   isLoading: boolean;
   error: string | null;
 }
@@ -30,6 +32,8 @@ const initialState: MarketState = {
   priceBall: 0.5,
   priceStrike: 0.5,
   gameActive: false,
+  positionCount: 0,
+  connectionCount: 0,
   isLoading: true,
   error: null,
 };
@@ -110,6 +114,45 @@ export function MarketProvider({ children }: MarketProviderProps) {
           setState((prev) => ({
             ...prev,
             gameActive: message.active,
+          }));
+          break;
+
+        case 'STATE_SYNC':
+          // Full state sync from server on connect
+          setState((prev) => ({
+            ...prev,
+            market: message.state.market,
+            gameActive: message.state.gameState.active,
+            positionCount: message.state.positionCount,
+            connectionCount: message.state.connectionCount,
+            isLoading: false,
+          }));
+          // Calculate prices from market data if available
+          if (message.state.market) {
+            const { qBall, qStrike, b } = message.state.market;
+            const maxQ = Math.max(qBall, qStrike);
+            const expBall = Math.exp((qBall - maxQ) / b);
+            const expStrike = Math.exp((qStrike - maxQ) / b);
+            const sumExp = expBall + expStrike;
+            setState((prev) => ({
+              ...prev,
+              priceBall: expBall / sumExp,
+              priceStrike: expStrike / sumExp,
+            }));
+          }
+          break;
+
+        case 'CONNECTION_COUNT':
+          setState((prev) => ({
+            ...prev,
+            connectionCount: message.count,
+          }));
+          break;
+
+        case 'POSITION_ADDED':
+          setState((prev) => ({
+            ...prev,
+            positionCount: message.positionCount,
           }));
           break;
       }

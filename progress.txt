@@ -357,3 +357,109 @@ cd packages/dashboard && pnpm dev http://192.168.1.100:3001
 - **Dashboard**: 23 passed
 - **Total**: 289 passing tests
 
+
+---
+
+## Dashboard Refactor: Polling → WebSocket
+Date: 2026-02-05
+
+### Problem
+The dashboard was polling `/api/admin/state` every 1 second, filling backend logs unnecessarily.
+
+### Solution
+Replaced REST polling with WebSocket-based state synchronization.
+
+### New WebSocket Message Types (hub/src/api/types.ts)
+1. **POSITION_ADDED** — Broadcast when a bet creates a position
+   - Contains full position object + total position count
+2. **CONNECTION_COUNT** — Broadcast on connect/disconnect
+   - Contains current count of WebSocket clients
+3. **STATE_SYNC** — Sent to newly connected clients
+   - Contains full AdminStateResponse + positions array
+
+### Hub Changes
+- `types.ts` — Added 3 new WsMessage types, updated union type
+- `ws.ts` — Added broadcastConnectionCount() on connect/disconnect, added sendToSocket() method
+- `app.ts` — Send STATE_SYNC to new WebSocket connections
+- `bet.routes.ts` — Broadcast POSITION_ADDED after recording position
+
+### Dashboard Changes
+- `types.ts` — Mirrored new WsMessage types
+- `App.tsx` — Completely refactored to derive state from WebSocket messages:
+  - STATE_SYNC initializes full state on connect
+  - POSITION_ADDED adds to positions list
+  - CONNECTION_COUNT updates client count
+  - MARKET_STATUS/GAME_STATE/ODDS_UPDATE update respective state
+  - Removed useAdminState import and REST polling
+- `index.tsx` — Removed restUrl prop (no longer needed)
+- `formatters.ts` — Added formatting for new message types
+- `hooks/index.ts` — Removed useAdminState export (deprecated)
+
+### Test Updates
+- `ws.test.ts` — Updated 8 tests to account for CONNECTION_COUNT broadcasts, added 4 new tests
+- `formatters.test.ts` — Added 3 tests for new message type formatting
+
+### Test Results
+- **Hub:** 192 passed (was 187, +5 new WS tests)
+- **Frontend:** 77 passed
+- **Dashboard:** 26 passed (was 23, +3 formatter tests)
+- **Total:** 295 passing tests
+
+### Benefits
+- No more polling logs in backend
+- Real-time state updates via WebSocket
+- Lower backend load
+- Simpler dashboard architecture (single data source)
+
+---
+
+## Frontend Refactor: StateDisplay Polling → WebSocket
+Date: 2026-02-05
+
+### Problem
+The frontend's StateDisplay component (Oracle view) was polling `/api/admin/state` every 5 seconds, duplicating the same issue that was fixed in the dashboard.
+
+### Solution
+Extended the frontend's MarketProvider to handle all WebSocket message types and provide admin state to StateDisplay via context.
+
+### Frontend Types Changes (src/lib/types.ts)
+- Added `address` field to Position interface
+- Added 3 new WebSocket message types (mirroring hub):
+  - `WsPositionAdded` — position + positionCount
+  - `WsConnectionCount` — count
+  - `WsStateSync` — full AdminStateResponse + positions
+- Updated `WsMessage` union type
+
+### MarketProvider Changes (src/providers/MarketProvider.tsx)
+- Added `positionCount` and `connectionCount` to MarketState
+- Handle new WebSocket message types:
+  - `STATE_SYNC` — Initialize market, prices, gameActive, positionCount, connectionCount
+  - `CONNECTION_COUNT` — Update connectionCount
+  - `POSITION_ADDED` — Update positionCount
+- Exposed new values in context
+
+### StateDisplay Changes (src/components/oracle/StateDisplay.tsx)
+- Removed useState for market, gameState, positionCount, connectionCount
+- Removed useEffect with setInterval polling
+- Removed fetchState() REST function
+- Now gets all state from useMarket() hook
+- Same UI rendering logic preserved
+
+### Test Fixes
+- Updated all test files to use uppercase 'BALL'/'STRIKE' (was 'Ball'/'Strike'):
+  - `usePositions.test.tsx` — 4 occurrences
+  - `api.test.ts` — 5 occurrences
+  - `MarketProvider.test.tsx` — 1 occurrence
+- Added missing `address` field to Position mocks in tests
+
+### Test Results
+- **Hub:** 192 passed
+- **Frontend:** 81 passed (was 77, +4 new MarketProvider context tests)
+- **Dashboard:** 26 passed
+- **Total:** 299 passing tests
+
+### Benefits
+- Oracle StateDisplay now updates instantly via WebSocket
+- Eliminated /api/admin/state polling from frontend
+- Consistent state sync architecture across dashboard and frontend
+- All state flows through WebSocket → MarketProvider → components
