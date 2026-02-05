@@ -20,10 +20,28 @@ export async function buildApp(ctx: AppContext) {
 
   await app.register(websocket);
 
+  // Request/response lifecycle logging
+  app.addHook('onRequest', async (req) => {
+    (req as any).__startTime = process.hrtime.bigint();
+  });
+
+  app.addHook('onResponse', async (req, reply) => {
+    const start = (req as any).__startTime as bigint | undefined;
+    const durationMs = start
+      ? Number(process.hrtime.bigint() - start) / 1_000_000
+      : 0;
+    ctx.log.request(req.method, req.url, reply.statusCode, Math.round(durationMs));
+  });
+
   // WebSocket route
   app.get('/ws', { websocket: true }, (socket, req) => {
     const address = (req.query as any)?.address as string | undefined;
     ctx.ws.addConnection(socket, address);
+    ctx.log.wsConnect(address ?? null, ctx.ws.getConnectionCount());
+
+    socket.on('close', () => {
+      ctx.log.wsDisconnect(address ?? null, ctx.ws.getConnectionCount());
+    });
   });
 
   // REST routes

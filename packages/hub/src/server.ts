@@ -12,6 +12,7 @@ import { PositionTracker } from './modules/position/tracker.js';
 import { ClearnodeClient } from './modules/clearnode/client.js';
 import { OracleService } from './modules/oracle/oracle.js';
 import { WsManager } from './api/ws.js';
+import { logger } from './logger.js';
 import type { AppContext } from './context.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
@@ -31,15 +32,16 @@ async function main() {
     clearnodeClient,
     oracle: new OracleService(),
     ws: new WsManager(),
+    log: logger,
   };
 
   const app = await buildApp(ctx);
 
   await app.listen({ port: PORT, host: '0.0.0.0' });
-  console.log(`PulsePlay Hub listening on port ${PORT}`);
+  logger.startup(PORT);
 }
 
 main().catch((err) => {
-  console.error('Failed to start server:', err);
+  logger.error('startup', err);
   process.exit(1);
 });

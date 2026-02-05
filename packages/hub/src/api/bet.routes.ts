@@ -26,6 +26,7 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
     const market = ctx.marketManager.getMarket(marketId);
     if (!market || market.status !== 'OPEN') {
       const reason = !market ? 'Market not found' : `Market is ${market.status}`;
+      ctx.log.betRejected(address, reason);
       return { accepted: false, reason } as BetResponse;
     }
 
@@ -58,6 +59,9 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
       priceStrike: newPriceStrike,
       marketId,
     });
+
+    ctx.log.betPlaced(address, amount, outcome, marketId, shares, newPriceBall, newPriceStrike);
+    ctx.log.broadcast('ODDS_UPDATE', ctx.ws.getConnectionCount());
 
     return {
       accepted: true,

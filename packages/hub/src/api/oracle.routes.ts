@@ -16,6 +16,7 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     ctx.oracle.setGameActive(active);
 
     ctx.ws.broadcast({ type: 'GAME_STATE', active });
+    ctx.log.gameStateChanged(active);
 
     return { success: true, active };
   });
@@ -42,6 +43,9 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       marketId: market.id,
     });
 
+    ctx.log.marketOpened(market.id);
+    ctx.log.broadcast('MARKET_STATUS', ctx.ws.getConnectionCount());
+
     return { success: true, marketId: market.id };
   });
 
@@ -59,6 +63,9 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       status: 'CLOSED',
       marketId: current.id,
     });
+
+    ctx.log.marketClosed(current.id);
+    ctx.log.broadcast('MARKET_STATUS', ctx.ws.getConnectionCount());
 
     return { success: true, marketId: current.id };
   });
@@ -78,6 +85,14 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     const positions = ctx.positionTracker.getPositionsByMarket(current.id);
     const result = ctx.marketManager.resolveMarket(current.id, outcome as Outcome, positions);
 
+    ctx.log.marketResolved(
+      current.id,
+      outcome,
+      result.winners.length,
+      result.losers.length,
+      result.totalPayout,
+    );
+
     // Send individual results to bettors
     for (const winner of result.winners) {
       ctx.ws.sendTo(winner.address, {
@@ -86,6 +101,7 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
         marketId: current.id,
         payout: winner.payout,
       });
+      ctx.log.sendTo(winner.address, 'BET_RESULT:WIN');
     }
 
     for (const loser of result.losers) {
@@ -95,6 +111,7 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
         marketId: current.id,
         loss: loser.loss,
       });
+      ctx.log.sendTo(loser.address, 'BET_RESULT:LOSS');
     }
 
     // Clear positions for this market
@@ -107,6 +124,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       marketId: current.id,
       outcome: outcome as Outcome,
     });
+
+    ctx.log.broadcast('MARKET_STATUS', ctx.ws.getConnectionCount());
 
     return {
       success: true,

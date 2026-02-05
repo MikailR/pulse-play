@@ -4,6 +4,10 @@ import { MarketManager } from '../modules/market/manager.js';
 import { PositionTracker } from '../modules/position/tracker.js';
 import { getPrice } from '../modules/lmsr/engine.js';
 
+interface PositionsParams {
+  marketId: string;
+}
+
 export function registerAdminRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/admin/state', async () => {
     const market = ctx.marketManager.getCurrentMarket();
@@ -46,6 +50,17 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: AppContext): void
     ctx.oracle.reset();
     ctx.ws.clear();
 
+    ctx.log.adminReset();
     return { success: true };
   });
+
+  // Get positions for a specific market
+  app.get<{ Params: PositionsParams }>(
+    '/api/admin/positions/:marketId',
+    async (request) => {
+      const { marketId } = request.params;
+      const positions = ctx.positionTracker.getPositionsByMarket(marketId);
+      return { positions };
+    }
+  );
 }

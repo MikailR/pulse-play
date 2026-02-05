@@ -3,6 +3,9 @@ import { PositionTracker } from './modules/position/tracker.js';
 import { ClearnodeClient } from './modules/clearnode/client.js';
 import { OracleService } from './modules/oracle/oracle.js';
 import { WsManager } from './api/ws.js';
+import { logger as defaultLogger } from './logger.js';
+
+export type Logger = typeof defaultLogger;
 
 export interface AppContext {
   marketManager: MarketManager;
@@ -10,6 +13,7 @@ export interface AppContext {
   clearnodeClient: ClearnodeClient;
   oracle: OracleService;
   ws: WsManager;
+  log: Logger;
 }
 
 /**
@@ -38,6 +42,7 @@ export function createTestContext(
     clearnodeClient: mockClearnode,
     oracle: new OracleService(),
     ws: new WsManager(),
+    log: defaultLogger,
     ...overrides,
   };
 }

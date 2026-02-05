@@ -14,14 +14,17 @@ export function registerFaucetRoutes(app: FastifyInstance, ctx: AppContext): voi
     }
 
     // Stub: user funding happens frontend-side via Clearnode
+    ctx.log.faucetUser(address, amount);
     return { success: true, address, amount };
   });
 
   app.post('/api/faucet/mm', async (_req, reply) => {
     try {
       await ctx.clearnodeClient.requestFaucet();
+      ctx.log.faucetMM(true);
       return { success: true };
     } catch (err: any) {
+      ctx.log.faucetMM(false, err.message);
       return reply.status(500).send({ error: err.message ?? 'Faucet request failed' });
     }
   });
