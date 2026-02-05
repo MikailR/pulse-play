@@ -103,7 +103,7 @@ describe('MarketControls', () => {
     await user.click(screen.getByTestId('resolve-ball-button'));
 
     await waitFor(() => {
-      expect(mockResolveOutcome).toHaveBeenCalledWith({ outcome: 'Ball' });
+      expect(mockResolveOutcome).toHaveBeenCalledWith({ outcome: 'BALL' });
     });
 
     expect(screen.getByTestId('resolve-result')).toHaveTextContent('1 winners');

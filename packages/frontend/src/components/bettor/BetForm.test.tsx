@@ -93,14 +93,14 @@ describe('BetForm', () => {
     await waitFor(() => {
       expect(mockPlaceBet).toHaveBeenCalledWith(
         expect.objectContaining({
-          outcome: 'Ball',
+          outcome: 'BALL',
           amount: 10,
         })
       );
     });
 
     await waitFor(() => {
-      expect(onBetPlaced).toHaveBeenCalledWith('Ball', 9.5);
+      expect(onBetPlaced).toHaveBeenCalledWith('BALL', 9.5);
     });
   });
 });
