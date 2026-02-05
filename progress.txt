@@ -131,3 +131,76 @@ Date: 2026-02-04
 - Connect to Hub WebSocket for real-time updates
 - Betting UI with LMSR price display
 - Game state visualization
+
+---
+
+## Phase 4 Complete: Frontend Core
+Date: 2026-02-04
+
+### What was done:
+1. **Next.js 14 scaffolding** — Created @pulse-play/frontend package with TypeScript, Tailwind, App Router
+2. **Jest + testing-library setup** — Mock modules for wagmi, viem, @tanstack/react-query, WebSocket
+3. **Lib modules** (`src/lib/`)
+   - `config.ts` — env var exports (HUB_REST_URL, HUB_WS_URL, PRIVATE_KEY)
+   - `types.ts` — mirrors hub API types (MarketResponse, PositionsResponse, WsMessage, etc.)
+   - `api.ts` — Hub REST client (placeBet, getMarket, getPositions, oracle endpoints)
+4. **Providers** (`src/providers/`)
+   - `WagmiProvider.tsx` — wagmi config + QueryClient + WalletContext (address derived from PRIVATE_KEY)
+   - `WebSocketProvider.tsx` — WebSocket connection management, subscribe pattern for real-time updates
+   - `MarketProvider.tsx` — Market state management, syncs with REST + WebSocket
+5. **Hooks** (`src/hooks/`)
+   - `useBet.ts` — Bet placement with loading/error states
+   - `usePositions.ts` — Position fetching with auto-refetch on market resolution
+   - `useMarket.ts`, `useWebSocket.ts` — barrel re-exports
+6. **Shared Components** (`src/components/`)
+   - `Header.tsx` — Logo, navigation (Bettor/Oracle), WebSocket status, WalletStatus
+   - `WalletStatus.tsx` — Shows truncated address or "not configured"
+7. **Bettor Components** (`src/components/bettor/`)
+   - `OddsDisplay.tsx` — Ball/Strike prices as percentages + American odds
+   - `BetForm.tsx` — Outcome selection, amount input with presets, place bet button
+   - `PositionList.tsx` — Shows user's positions in current market
+   - `BetResultToast.tsx` — Win/Loss notification from WebSocket BET_RESULT
+8. **Oracle Components** (`src/components/oracle/`)
+   - `GameControls.tsx` — Activate/Deactivate game toggle
+   - `MarketControls.tsx` — Open/Close market, Resolve with Ball/Strike
+   - `StateDisplay.tsx` — System state dashboard (market, positions, connections)
+9. **App Pages** (`src/app/`)
+   - `layout.tsx` + `LayoutInner.tsx` — Provider nesting (WagmiProvider > WebSocketProvider > MarketProvider)
+   - `page.tsx` — Bettor view (OddsDisplay, BetForm, PositionList)
+   - `oracle/page.tsx` — Oracle panel (GameControls, MarketControls, StateDisplay)
+10. **Hub CORS** — Added @fastify/cors to hub for frontend cross-origin requests
+
+### Test results:
+- **67 tests passing** across 15 test suites
+- Command: `pnpm --filter @pulse-play/frontend test`
+- Build passes: `pnpm --filter @pulse-play/frontend build`
+
+### Test breakdown (67 tests):
+- lib/api: 9
+- providers: 12 (WagmiProvider 3, WebSocketProvider 4, MarketProvider 5)
+- hooks: 10 (useBet 5, usePositions 5)
+- components/shared: 6 (Header 3, WalletStatus 3)
+- components/bettor: 17 (OddsDisplay 4, BetForm 5, PositionList 4, BetResultToast 4)
+- components/oracle: 13 (GameControls 4, MarketControls 5, StateDisplay 3)
+
+### Architecture decisions:
+- WagmiProvider uses viem's privateKeyToAccount for direct wallet; no connector dependencies
+- WebSocket reconnects after 3 seconds on disconnect
+- MarketProvider refetches on OPEN/RESOLVED status changes (not CLOSED)
+- BetResultToast uses subscribe pattern to avoid prop drilling
+- All components have data-testid attributes for testing
+- Test mocks for wagmi/viem/react-query avoid ESM import issues in Jest
+
+### Environment setup:
+- Copy `.env.local.example` to `.env.local`
+- Set `NEXT_PUBLIC_PRIVATE_KEY` to a test wallet private key
+
+### Running the full stack:
+1. Terminal 1: `pnpm --filter hub build && node packages/hub/dist/server.js`
+2. Terminal 2: `pnpm --filter @pulse-play/frontend dev`
+3. Open http://localhost:3000 (Bettor) or http://localhost:3000/oracle (Oracle)
+
+### Next steps (Phase 5):
+- Remaining personas (Bettor wallet connection, proper session management)
+- E2E integration tests
+- Demo polish

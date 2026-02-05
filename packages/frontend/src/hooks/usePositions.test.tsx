@@ -1,0 +1,166 @@
+import React from 'react';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { usePositions } from './usePositions';
+import { WebSocketProvider } from '@/providers/WebSocketProvider';
+import * as api from '@/lib/api';
+import {
+  MockWebSocket,
+  installMockWebSocket,
+  flushPromises,
+} from '@/test/mocks/websocket';
+
+jest.mock('@/lib/api');
+const mockGetPositions = api.getPositions as jest.MockedFunction<
+  typeof api.getPositions
+>;
+
+// Wrapper with WebSocket provider
+function TestWrapper({ children }: { children: React.ReactNode }) {
+  return <WebSocketProvider address="0x123">{children}</WebSocketProvider>;
+}
+
+describe('usePositions', () => {
+  beforeEach(() => {
+    installMockWebSocket();
+    mockGetPositions.mockReset();
+  });
+
+  afterEach(() => {
+    MockWebSocket.clearInstances();
+  });
+
+  it('returns empty positions without address', async () => {
+    const { result } = renderHook(() => usePositions({}), {
+      wrapper: TestWrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.positions).toEqual([]);
+  });
+
+  it('fetches positions for address', async () => {
+    mockGetPositions.mockResolvedValueOnce({
+      positions: [
+        {
+          marketId: 'market-1',
+          outcome: 'Ball',
+          shares: 10,
+          costPaid: 5,
+          appSessionId: 'session-1',
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => usePositions({ address: '0xabc' }), {
+      wrapper: TestWrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockGetPositions).toHaveBeenCalledWith('0xabc');
+    expect(result.current.positions).toHaveLength(1);
+    expect(result.current.positions[0].outcome).toBe('Ball');
+  });
+
+  it('filters positions by marketId', async () => {
+    mockGetPositions.mockResolvedValueOnce({
+      positions: [
+        {
+          marketId: 'market-1',
+          outcome: 'Ball',
+          shares: 10,
+          costPaid: 5,
+          appSessionId: 'session-1',
+          timestamp: Date.now(),
+        },
+        {
+          marketId: 'market-2',
+          outcome: 'Strike',
+          shares: 5,
+          costPaid: 2.5,
+          appSessionId: 'session-2',
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
+    const { result } = renderHook(
+      () => usePositions({ address: '0xabc', marketId: 'market-1' }),
+      { wrapper: TestWrapper }
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.positions).toHaveLength(1);
+    expect(result.current.positions[0].marketId).toBe('market-1');
+  });
+
+  it('handles fetch error', async () => {
+    mockGetPositions.mockRejectedValueOnce(new Error('Network error'));
+
+    const { result } = renderHook(() => usePositions({ address: '0xabc' }), {
+      wrapper: TestWrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe('Network error');
+    });
+  });
+
+  it('refetches on market resolution', async () => {
+    mockGetPositions
+      .mockResolvedValueOnce({ positions: [] })
+      .mockResolvedValueOnce({
+        positions: [
+          {
+            marketId: 'market-1',
+            outcome: 'Ball',
+            shares: 10,
+            costPaid: 5,
+            appSessionId: 'session-1',
+            timestamp: Date.now(),
+          },
+        ],
+      });
+
+    const { result } = renderHook(() => usePositions({ address: '0xabc' }), {
+      wrapper: TestWrapper,
+    });
+
+    const ws = MockWebSocket.getLastInstance()!;
+
+    await act(async () => {
+      ws.simulateOpen();
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.positions).toHaveLength(0);
+
+    // Simulate market resolution
+    await act(async () => {
+      ws.simulateMessage({
+        type: 'MARKET_STATUS',
+        status: 'RESOLVED',
+        marketId: 'market-1',
+        outcome: 'Ball',
+      });
+      await flushPromises();
+    });
+
+    await waitFor(() => {
+      expect(mockGetPositions).toHaveBeenCalledTimes(2);
+    });
+  });
+});
