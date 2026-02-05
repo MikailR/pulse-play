@@ -133,7 +133,7 @@ export function MarketControls({ className = '' }: MarketControlsProps) {
 
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => handleResolve('Ball')}
+            onClick={() => handleResolve('BALL')}
             disabled={!canResolve || isLoading}
             className="py-3 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
             data-testid="resolve-ball-button"
@@ -141,7 +141,7 @@ export function MarketControls({ className = '' }: MarketControlsProps) {
             Resolve: Ball
           </button>
           <button
-            onClick={() => handleResolve('Strike')}
+            onClick={() => handleResolve('STRIKE')}
             disabled={!canResolve || isLoading}
             className="py-3 rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
             data-testid="resolve-strike-button"

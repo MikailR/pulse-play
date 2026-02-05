@@ -57,10 +57,10 @@ export function BetForm({ className = '', onBetPlaced }: BetFormProps) {
         <label className="block text-sm text-gray-400 mb-2">Select Outcome</label>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => setSelectedOutcome('Ball')}
+            onClick={() => setSelectedOutcome('BALL')}
             disabled={!isMarketOpen}
             className={`p-3 rounded-lg border transition-colors ${
-              selectedOutcome === 'Ball'
+              selectedOutcome === 'BALL'
                 ? 'bg-blue-500/20 border-blue-500 text-blue-400'
                 : 'border-gray-600 text-gray-400 hover:border-gray-500 disabled:opacity-50'
             }`}
@@ -69,10 +69,10 @@ export function BetForm({ className = '', onBetPlaced }: BetFormProps) {
             Ball
           </button>
           <button
-            onClick={() => setSelectedOutcome('Strike')}
+            onClick={() => setSelectedOutcome('STRIKE')}
             disabled={!isMarketOpen}
             className={`p-3 rounded-lg border transition-colors ${
-              selectedOutcome === 'Strike'
+              selectedOutcome === 'STRIKE'
                 ? 'bg-red-500/20 border-red-500 text-red-400'
                 : 'border-gray-600 text-gray-400 hover:border-gray-500 disabled:opacity-50'
             }`}

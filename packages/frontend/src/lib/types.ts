@@ -1,5 +1,5 @@
 // Outcome type (matches hub)
-export type Outcome = 'Ball' | 'Strike';
+export type Outcome = 'BALL' | 'STRIKE';
 
 // Market status (matches hub)
 export type MarketStatus = 'PENDING' | 'OPEN' | 'CLOSED' | 'RESOLVED';
