@@ -80,3 +80,54 @@ Date: 2026-02-04
 - WebSocket broadcast for real-time odds/market updates
 - Mock Oracle with auto-play mode
 - Wire LMSR + Market + Position + Clearnode into API endpoints
+
+---
+
+## Phase 3 Complete: Hub REST + WebSocket APIs
+Date: 2026-02-04
+
+### What was done:
+1. **Dependencies added** — fastify, @fastify/websocket
+2. **API types** (`src/api/types.ts`) — Request/response DTOs, WebSocket message type unions (ODDS_UPDATE, MARKET_STATUS, GAME_STATE, BET_RESULT)
+3. **OracleService** (`src/modules/oracle/`) — Game state management, auto-play mode with configurable timers and outcome sequences, callbacks for market lifecycle
+4. **WsManager** (`src/api/ws.ts`) — WebSocket connection tracking with per-address mapping, broadcast(), sendTo(), cleanup on close
+5. **AppContext** (`src/context.ts`) — Shared context interface + createTestContext() helper with mocked ClearnodeClient
+6. **App factory** (`src/app.ts`) — buildApp(ctx) creates Fastify instance with all routes and WebSocket support
+7. **Routes:**
+   - `bet.routes.ts` — POST /api/bet (LMSR integration: getShares → getNewQuantities → updateQuantities → record position → broadcast odds)
+   - `market.routes.ts` — GET /api/market, GET /api/market/:marketId (with computed LMSR prices)
+   - `positions.routes.ts` — GET /api/positions/:address
+   - `oracle.routes.ts` — POST /api/oracle/game-state, /market/open, /market/close, /outcome (full lifecycle with WS broadcasts + individual BET_RESULT messages)
+   - `faucet.routes.ts` — POST /api/faucet/user (stub), POST /api/faucet/mm (calls ClearnodeClient)
+   - `admin.routes.ts` — GET /api/admin/state, POST /api/admin/reset
+8. **Server entry point** (`src/server.ts`) — Creates real context from env vars and listens on PORT
+
+### Test results:
+- **184 tests passing** across 15 test suites (90 existing Phase 1+2 + 94 new Phase 3)
+- 6 live Clearnode tests skipped (run with LIVE_TEST=true)
+- Integration tests use real WebSocket connections (app.listen on port 0)
+- All route tests use Fastify's app.inject() — no port binding needed
+
+### Test breakdown (Phase 3 new — 94 tests):
+- oracle.test.ts: 11 (game state, auto-play, timers)
+- ws.test.ts: 8 (broadcast, sendTo, cleanup, clear)
+- bet.routes.test.ts: 15 (validation, LMSR integration, WS broadcast)
+- market.routes.test.ts: 8 (prices, states, by-ID lookup)
+- positions.routes.test.ts: 5 (query, filtering, field completeness)
+- oracle.routes.test.ts: 23 (game state, open/close/resolve, WS notifications, BET_RESULT delivery)
+- faucet.routes.test.ts: 6 (stub, validation, ClearnodeClient integration)
+- admin.routes.test.ts: 6 (state dump, reset, auto-play stop)
+- integration.test.ts: 12 (full lifecycle, concurrent bets, real WS, market cycling)
+
+### Architecture decisions:
+- AppContext is a mutable object — admin reset replaces MarketManager/PositionTracker instances in-place
+- Oracle module-level marketCounter generates sequential market IDs (resettable for tests)
+- WsManager uses readyState === 1 (numeric) to avoid import dependency on WebSocket constant
+- Integration tests track open sockets and close them in afterEach to prevent worker leaks
+- Route handlers return response objects directly (Fastify serializes to JSON automatically)
+
+### Next steps (Phase 4):
+- Frontend scaffolding (Next.js 14)
+- Connect to Hub WebSocket for real-time updates
+- Betting UI with LMSR price display
+- Game state visualization
