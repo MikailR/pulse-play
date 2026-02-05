@@ -1,0 +1,171 @@
+import {
+  formatOdds,
+  formatAmericanOdds,
+  truncateAddress,
+  formatTime,
+  formatWsMessage,
+  getStatusColor,
+  getOutcomeColor,
+  formatDollars,
+  formatShares,
+} from './formatters.js';
+import type { WsMessage } from '../types.js';
+
+describe('formatOdds', () => {
+  it('formats 0.5 as 50.0%', () => {
+    expect(formatOdds(0.5)).toBe('50.0%');
+  });
+
+  it('formats 0.75 as 75.0%', () => {
+    expect(formatOdds(0.75)).toBe('75.0%');
+  });
+
+  it('formats 0.123 as 12.3%', () => {
+    expect(formatOdds(0.123)).toBe('12.3%');
+  });
+
+  it('formats 0 as 0.0%', () => {
+    expect(formatOdds(0)).toBe('0.0%');
+  });
+
+  it('formats 1 as 100.0%', () => {
+    expect(formatOdds(1)).toBe('100.0%');
+  });
+});
+
+describe('formatAmericanOdds', () => {
+  it('returns --- for edge cases', () => {
+    expect(formatAmericanOdds(0)).toBe('---');
+    expect(formatAmericanOdds(1)).toBe('---');
+  });
+
+  it('returns negative odds for favorites (>50%)', () => {
+    expect(formatAmericanOdds(0.6)).toBe('-150');
+    expect(formatAmericanOdds(0.75)).toBe('-300');
+  });
+
+  it('returns positive odds for underdogs (<50%)', () => {
+    expect(formatAmericanOdds(0.4)).toBe('+150');
+    expect(formatAmericanOdds(0.25)).toBe('+300');
+  });
+
+  it('returns -100 for exactly 50%', () => {
+    expect(formatAmericanOdds(0.5)).toBe('-100');
+  });
+});
+
+describe('truncateAddress', () => {
+  it('truncates long addresses', () => {
+    expect(truncateAddress('0x1234567890abcdef1234567890abcdef12345678')).toBe(
+      '0x1234..5678'
+    );
+  });
+
+  it('keeps short strings as-is', () => {
+    expect(truncateAddress('0x1234')).toBe('0x1234');
+    expect(truncateAddress('short')).toBe('short');
+  });
+});
+
+describe('formatTime', () => {
+  it('formats date as HH:MM:SS', () => {
+    const date = new Date('2026-02-05T14:32:15');
+    const result = formatTime(date);
+    // Contains hours:minutes:seconds format
+    expect(result).toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+});
+
+describe('formatWsMessage', () => {
+  it('formats ODDS_UPDATE messages', () => {
+    const msg: WsMessage = {
+      type: 'ODDS_UPDATE',
+      priceBall: 0.45,
+      priceStrike: 0.55,
+      marketId: 'market-1',
+    };
+    expect(formatWsMessage(msg)).toBe('Ball: 45.0%, Strike: 55.0%');
+  });
+
+  it('formats MARKET_STATUS messages', () => {
+    const msg: WsMessage = {
+      type: 'MARKET_STATUS',
+      status: 'OPEN',
+      marketId: 'market-1',
+    };
+    expect(formatWsMessage(msg)).toBe('OPEN');
+  });
+
+  it('formats MARKET_STATUS with outcome', () => {
+    const msg: WsMessage = {
+      type: 'MARKET_STATUS',
+      status: 'RESOLVED',
+      marketId: 'market-1',
+      outcome: 'BALL',
+    };
+    expect(formatWsMessage(msg)).toBe('RESOLVED (BALL)');
+  });
+
+  it('formats GAME_STATE messages', () => {
+    const activeMsg: WsMessage = { type: 'GAME_STATE', active: true };
+    expect(formatWsMessage(activeMsg)).toBe('ACTIVE');
+
+    const inactiveMsg: WsMessage = { type: 'GAME_STATE', active: false };
+    expect(formatWsMessage(inactiveMsg)).toBe('INACTIVE');
+  });
+
+  it('formats BET_RESULT WIN messages', () => {
+    const msg: WsMessage = {
+      type: 'BET_RESULT',
+      result: 'WIN',
+      marketId: 'market-1',
+      payout: 12.5,
+    };
+    expect(formatWsMessage(msg)).toBe('WIN $12.50');
+  });
+
+  it('formats BET_RESULT LOSS messages', () => {
+    const msg: WsMessage = {
+      type: 'BET_RESULT',
+      result: 'LOSS',
+      marketId: 'market-1',
+      loss: 5.0,
+    };
+    expect(formatWsMessage(msg)).toBe('LOSS $5.00');
+  });
+});
+
+describe('getStatusColor', () => {
+  it('returns correct colors for each status', () => {
+    expect(getStatusColor('PENDING')).toBe('yellow');
+    expect(getStatusColor('OPEN')).toBe('green');
+    expect(getStatusColor('CLOSED')).toBe('gray');
+    expect(getStatusColor('RESOLVED')).toBe('blue');
+  });
+});
+
+describe('getOutcomeColor', () => {
+  it('returns cyan for BALL', () => {
+    expect(getOutcomeColor('BALL')).toBe('cyan');
+  });
+
+  it('returns magenta for STRIKE', () => {
+    expect(getOutcomeColor('STRIKE')).toBe('magenta');
+  });
+});
+
+describe('formatDollars', () => {
+  it('formats with $ prefix and 2 decimals', () => {
+    expect(formatDollars(5)).toBe('$5.00');
+    expect(formatDollars(12.5)).toBe('$12.50');
+    expect(formatDollars(0.99)).toBe('$0.99');
+  });
+});
+
+describe('formatShares', () => {
+  it('formats with 2 decimal places', () => {
+    expect(formatShares(10)).toBe('10.00');
+    expect(formatShares(12.345)).toBe('12.35');
+    expect(formatShares(0.5)).toBe('0.50');
+  });
+});
