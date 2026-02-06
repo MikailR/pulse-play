@@ -54,7 +54,7 @@ export function MarketPanel({ state, priceBall, priceStrike, barWidth = 20 }: Ma
 
           <Box marginTop={1}>
             <Text color="gray" dimColor>
-              qBall: {market.qBall.toFixed(2)}, qStrike: {market.qStrike.toFixed(2)}
+              qBall: {(market.qBall ?? 0).toFixed(2)}, qStrike: {(market.qStrike ?? 0).toFixed(2)}
             </Text>
           </Box>
         </>

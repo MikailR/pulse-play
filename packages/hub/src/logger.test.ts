@@ -21,6 +21,7 @@ describe('Logger', () => {
     expect(() => logger.faucetUser('0xAlice', 3)).not.toThrow();
     expect(() => logger.faucetUser('0xAlice', 1, 'timeout')).not.toThrow();
     expect(() => logger.adminReset()).not.toThrow();
+    expect(() => logger.clearnodeAutoConnect()).not.toThrow();
     expect(() => logger.clearnodeConnected('0xMM1234567890')).not.toThrow();
     expect(() => logger.clearnodeDisconnected()).not.toThrow();
     expect(() => logger.wsConnect('0xAlice', 3)).not.toThrow();
@@ -48,6 +49,7 @@ describe('Logger', () => {
     logger.faucetMM(true);
     logger.faucetUser('0x1');
     logger.adminReset();
+    logger.clearnodeAutoConnect();
     logger.clearnodeConnected('0xMM1234567890');
     logger.clearnodeDisconnected();
     logger.wsConnect('0x1', 1);

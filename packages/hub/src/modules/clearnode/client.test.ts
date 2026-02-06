@@ -288,9 +288,6 @@ describe("ClearnodeClient", () => {
       expect(await client.getBalance()).toBe("0");
     });
 
-    it("throws when not connected", async () => {
-      await expect(client.getBalance()).rejects.toThrow("not connected");
-    });
   });
 
   // ── requestFaucet ──
@@ -367,11 +364,6 @@ describe("ClearnodeClient", () => {
       );
     });
 
-    it("throws when not connected", async () => {
-      await expect(client.submitAppState(params)).rejects.toThrow(
-        "not connected",
-      );
-    });
   });
 
   // ── closeSession ──
@@ -425,9 +417,6 @@ describe("ClearnodeClient", () => {
       );
     });
 
-    it("throws when not connected", async () => {
-      await expect(client.closeSession(params)).rejects.toThrow("not connected");
-    });
   });
 
   // ── transfer ──
@@ -478,9 +467,6 @@ describe("ClearnodeClient", () => {
       );
     });
 
-    it("throws when not connected", async () => {
-      await expect(client.transfer(params)).rejects.toThrow("not connected");
-    });
   });
 
   // ── createAppSession ──
@@ -572,11 +558,6 @@ describe("ClearnodeClient", () => {
       );
     });
 
-    it("throws when not connected", async () => {
-      await expect(client.createAppSession(params)).rejects.toThrow(
-        "not connected",
-      );
-    });
   });
 
   // ── getAppSessions ──
@@ -653,8 +634,108 @@ describe("ClearnodeClient", () => {
       expect(sessions[1].sessionData).toBeUndefined();
     });
 
-    it("throws when not connected", async () => {
-      await expect(client.getAppSessions()).rejects.toThrow("not connected");
+  });
+
+  // ── Lazy connection ──
+
+  describe("lazy connection", () => {
+    it("auto-connects on first RPC call when not connected", async () => {
+      const { authenticate } = require("./auth.js");
+
+      mockSendAndWait.mockResolvedValueOnce("balance_response");
+      mockParseGetLedgerBalances.mockReturnValueOnce({
+        params: {
+          ledgerBalances: [{ asset: "ytest.usd", amount: "42000000" }],
+        },
+      });
+
+      // No explicit connect() call
+      const balance = await client.getBalance();
+
+      expect(authenticate).toHaveBeenCalled();
+      expect(balance).toBe("42000000");
+      expect(client.isConnected()).toBe(true);
+    });
+
+    it("reuses existing connection on subsequent calls", async () => {
+      const { authenticate } = require("./auth.js");
+
+      await client.connect();
+      authenticate.mockClear();
+
+      mockSendAndWait.mockResolvedValueOnce("raw1");
+      mockParseGetLedgerBalances.mockReturnValueOnce({
+        params: { ledgerBalances: [{ asset: "ytest.usd", amount: "1" }] },
+      });
+
+      mockSendAndWait.mockResolvedValueOnce("raw2");
+      mockParseGetLedgerBalances.mockReturnValueOnce({
+        params: { ledgerBalances: [{ asset: "ytest.usd", amount: "2" }] },
+      });
+
+      await client.getBalance();
+      await client.getBalance();
+
+      // authenticate should NOT have been called again — reused existing connection
+      expect(authenticate).not.toHaveBeenCalled();
+    });
+
+    it("reconnects transparently when connection has dropped", async () => {
+      const { authenticate } = require("./auth.js");
+
+      await client.connect();
+      authenticate.mockClear();
+
+      // Simulate connection drop
+      mockWsInstance.readyState = MockWebSocket.CLOSED;
+      expect(client.isConnected()).toBe(false);
+
+      mockSendAndWait.mockResolvedValueOnce("raw");
+      mockParseGetLedgerBalances.mockReturnValueOnce({
+        params: { ledgerBalances: [{ asset: "ytest.usd", amount: "99" }] },
+      });
+
+      const balance = await client.getBalance();
+
+      // Should have reconnected (new authenticate call)
+      expect(authenticate).toHaveBeenCalledTimes(1);
+      expect(balance).toBe("99");
+      expect(client.isConnected()).toBe(true);
+    });
+
+    it("deduplicates concurrent connect attempts", async () => {
+      const { authenticate } = require("./auth.js");
+
+      // Set up mocks for both RPC calls
+      mockSendAndWait
+        .mockResolvedValueOnce("raw1")
+        .mockResolvedValueOnce("raw2");
+      mockParseGetLedgerBalances
+        .mockReturnValueOnce({
+          params: { ledgerBalances: [{ asset: "ytest.usd", amount: "1" }] },
+        })
+        .mockReturnValueOnce({
+          params: { ledgerBalances: [{ asset: "ytest.usd", amount: "2" }] },
+        });
+
+      // Fire two RPC calls simultaneously — both should await the same connect()
+      const [b1, b2] = await Promise.all([
+        client.getBalance(),
+        client.getBalance(),
+      ]);
+
+      // Only ONE authenticate call should have happened
+      expect(authenticate).toHaveBeenCalledTimes(1);
+      expect(b1).toBe("1");
+      expect(b2).toBe("2");
+    });
+
+    it("propagates connect failure to caller", async () => {
+      const { authenticate } = require("./auth.js");
+      authenticate.mockRejectedValueOnce(new Error("Auth server down"));
+
+      await expect(client.getBalance()).rejects.toThrow("Auth server down");
+      expect(client.isConnected()).toBe(false);
     });
   });
 });

@@ -179,6 +179,11 @@ export const logger = {
 
   // ── Clearnode ────────────────────────────────────────────────────────
 
+  clearnodeAutoConnect(): void {
+    if (silent) return;
+    write(`${ts()} ${BOLD}${CYAN}◆${RESET} Clearnode auto-connecting...`);
+  },
+
   clearnodeConnected(address: string): void {
     if (silent) return;
     write(`${ts()} ${BOLD}${GREEN}◆${RESET} Clearnode connected as ${MAGENTA}${addr(address)}${RESET}`);

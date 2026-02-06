@@ -278,6 +278,19 @@ export function App({ wsUrl, hubUrl }: AppProps) {
           priceBall: msg.priceBall,
           priceStrike: msg.priceStrike,
         });
+        if (msg.qBall !== undefined && msg.qStrike !== undefined) {
+          setState((prev) => {
+            if (!prev?.market) return prev;
+            return {
+              ...prev,
+              market: {
+                ...prev.market,
+                qBall: msg.qBall,
+                qStrike: msg.qStrike,
+              },
+            };
+          });
+        }
         break;
 
       case 'BET_RESULT':

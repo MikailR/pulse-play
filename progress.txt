@@ -835,3 +835,104 @@ Date: 2026-02-05
 - **Frontend:** 182 passed (was 181, +1 new re-auth guard test)
 - **Dashboard:** 33 passed (unchanged)
 - **Total:** 427 passing tests
+
+---
+
+## Fix: qBall/qStrike not updating in dashboard MarketPanel
+Date: 2026-02-05
+
+### Root Cause
+When a bet was placed, the hub broadcast `ODDS_UPDATE` containing only `priceBall`, `priceStrike`, and `marketId`. The updated `qBall`/`qStrike` values were not included. The dashboard's `ODDS_UPDATE` handler updated prices but never touched `state.market.qBall/qStrike`, so MarketPanel showed stale values (only initialized on `STATE_SYNC`). Same gap existed in the oracle market-open broadcast.
+
+### Fix
+Added `qBall` and `qStrike` fields to the `WsOddsUpdate` type and all broadcast sites.
+
+### Files Changed
+
+**Hub:**
+- `api/types.ts` — Added `qBall`, `qStrike` to `WsOddsUpdate` interface
+- `api/bet.routes.ts` — Include `qBall`, `qStrike` in ODDS_UPDATE broadcast after bet
+- `api/oracle.routes.ts` — Include `qBall: market.qBall`, `qStrike: market.qStrike` in market-open ODDS_UPDATE broadcast
+- `api/bet.routes.test.ts` — Added `qBall: expect.any(Number)`, `qStrike: expect.any(Number)` to ODDS_UPDATE assertion
+- `api/oracle.routes.test.ts` — Added `qBall: 0`, `qStrike: 0` to market-open ODDS_UPDATE assertion
+
+**Dashboard:**
+- `types.ts` — Added `qBall`, `qStrike` to `WsOddsUpdate`
+- `App.tsx` — ODDS_UPDATE handler now writes `qBall`/`qStrike` into `state.market`
+- `utils/formatters.test.ts` — Added `qBall`, `qStrike` to ODDS_UPDATE test message literal
+
+**Frontend:**
+- `lib/types.ts` — Added `qBall`, `qStrike` to `WsOddsUpdate`
+- `providers/MarketProvider.test.tsx` — Added `qBall`, `qStrike` to ODDS_UPDATE test message literal
+- `providers/WebSocketProvider.test.tsx` — Added `qBall`, `qStrike` to ODDS_UPDATE test message literal
+
+### Test Results
+- **Hub:** 212 passed (unchanged count)
+- **Frontend:** 182 passed (unchanged count)
+- **Dashboard:** 33 passed (unchanged count)
+- **Total:** 427 passing tests
+
+---
+
+## Fix: Dashboard MarketPanel crash on bet — `qBall.toFixed` undefined
+Date: 2026-02-05
+
+### Root Cause
+The hub ran from compiled `dist/` (old build) while dashboard ran from TypeScript source (new code). The ODDS_UPDATE handler in `App.tsx` wrote `msg.qBall`/`msg.qStrike` into state unconditionally, but the stale `dist/` build didn't include those fields. Result: `undefined` overwrote valid values from STATE_SYNC, and `MarketPanel.tsx:57` crashed calling `.toFixed(2)` on `undefined`.
+
+### Fixes
+1. **Rebuilt hub** (`pnpm --filter @pulse-play/hub build`) — compiled `dist/` now includes `qBall`/`qStrike` in ODDS_UPDATE
+2. **`dashboard/src/App.tsx`** — ODDS_UPDATE handler now guards setState with `msg.qBall !== undefined && msg.qStrike !== undefined`
+3. **`dashboard/src/components/MarketPanel.tsx`** — Added `?? 0` fallback: `(market.qBall ?? 0).toFixed(2)` as defensive safety net
+
+### Test Results
+- **Dashboard:** 33 passed (unchanged)
+- **Total:** 427 passing tests
+
+---
+
+## Fix: ClearnodeClient Drops Connection — Lazy Connect + Auto-Heal
+Date: 2026-02-05
+
+### Root Cause
+The `ClearnodeClient` opened a WebSocket at server startup (`server.ts`) and never handled disconnection. When the Clearnode server dropped the connection (idle timeout, server restart, etc.), `isConnected()` returned `false` permanently — no recovery, no reconnect.
+
+### Solution: Lazy Connect with Reuse
+Replaced the upfront `connect()` at startup with an internal `ensureConnected()` before every RPC call. If the connection is live, reuse it (fast path). If it's dead or never opened, connect transparently. Deduplicates concurrent connect attempts via a shared promise.
+
+### Files Changed
+
+**`packages/hub/src/modules/clearnode/client.ts`**
+- Added `private connectPromise: Promise<void> | null = null` field
+- Added `private async ensureConnected()` method — checks `isConnected()` first, deduplicates via shared promise
+- Replaced `this.assertConnected()` with `await this.ensureConnected()` in all 6 RPC methods (getBalance, submitAppState, closeSession, transfer, createAppSession, getAppSessions)
+- Removed `private assertConnected()` method
+
+**`packages/hub/src/server.ts`**
+- Removed the post-startup `connect()` try/catch block (lines 43-50). Server starts instantly, client connects lazily on first API call.
+
+**`packages/hub/src/logger.ts`**
+- Added `clearnodeAutoConnect()` method
+
+**`packages/hub/src/logger.test.ts`**
+- Added `clearnodeAutoConnect` to both test blocks
+
+**`packages/hub/src/modules/clearnode/client.test.ts`**
+- Removed 6 "throws when not connected" tests (no longer applicable — methods auto-connect)
+- Added 5 new tests in `describe("lazy connection")`:
+  1. `auto-connects on first RPC call when not connected`
+  2. `reuses existing connection on subsequent calls`
+  3. `reconnects transparently when connection has dropped`
+  4. `deduplicates concurrent connect attempts`
+  5. `propagates connect failure to caller`
+
+### Test Results
+- **Hub:** 211 passed (was 212: -6 removed "not connected" tests, +5 new lazy connection tests)
+- **Hub build:** ✅ clean (zero TypeScript errors)
+
+### Behavioral Changes
+- `connect()` / `disconnect()` / `isConnected()` remain public with same signatures
+- Server starts without Clearnode dependency (faster startup)
+- Connection self-heals on next RPC call after drop
+- `GET /api/mm/info` calls `getBalance()` which now auto-connects, so the endpoint should almost always return `isConnected: true`
+- No keepalive, no ping/pong, no reconnect timers needed

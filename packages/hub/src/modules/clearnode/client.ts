@@ -48,6 +48,7 @@ export class ClearnodeClient {
   private ws: WebSocket | null = null;
   private signer: MessageSigner | null = null;
   private mmAddress: string;
+  private connectPromise: Promise<void> | null = null;
 
   constructor(config: ClearnodeConfig) {
     this.config = config;
@@ -105,7 +106,7 @@ export class ClearnodeClient {
 
   /** Get the MM's unified balance for a given asset. */
   async getBalance(asset = "ytest.usd"): Promise<string> {
-    this.assertConnected();
+    await this.ensureConnected();
 
     const msg = await createGetLedgerBalancesMessage(this.signer!);
     const raw = await sendAndWait(this.ws!, msg, "get_ledger_balances");
@@ -126,7 +127,7 @@ export class ClearnodeClient {
   async submitAppState(
     params: SubmitAppStateParams,
   ): Promise<{ version: number }> {
-    this.assertConnected();
+    await this.ensureConnected();
 
     const msg = await createSubmitAppStateMessage(this.signer!, {
       app_session_id: params.appSessionId,
@@ -143,7 +144,7 @@ export class ClearnodeClient {
 
   /** Close an app session with final allocations. */
   async closeSession(params: CloseSessionParams): Promise<void> {
-    this.assertConnected();
+    await this.ensureConnected();
 
     const msg = await createCloseAppSessionMessage(this.signer!, {
       app_session_id: params.appSessionId,
@@ -157,7 +158,7 @@ export class ClearnodeClient {
 
   /** Transfer funds from MM's unified balance to another address. */
   async transfer(params: TransferParams): Promise<void> {
-    this.assertConnected();
+    await this.ensureConnected();
 
     const msg = await createTransferMessage(this.signer!, {
       destination: params.destination,
@@ -172,7 +173,7 @@ export class ClearnodeClient {
   async createAppSession(
     params: CreateAppSessionParams,
   ): Promise<CreateAppSessionResult> {
-    this.assertConnected();
+    await this.ensureConnected();
 
     const msg = await createAppSessionMessage(this.signer!, {
       definition: {
@@ -202,7 +203,7 @@ export class ClearnodeClient {
     participant?: string,
     status?: string,
   ): Promise<AppSessionInfo[]> {
-    this.assertConnected();
+    await this.ensureConnected();
 
     const addr = (participant ?? this.mmAddress) as `0x${string}`;
     const channelStatus = status
@@ -233,9 +234,13 @@ export class ClearnodeClient {
     return this.mmAddress;
   }
 
-  private assertConnected(): void {
-    if (!this.ws || !this.signer) {
-      throw new Error("ClearnodeClient is not connected");
-    }
+  /** Lazily connect: reuse if alive, otherwise connect transparently. */
+  private async ensureConnected(): Promise<void> {
+    if (this.isConnected()) return;
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = this.connect().finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
   }
 }

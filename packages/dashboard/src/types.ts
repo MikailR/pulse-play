@@ -9,6 +9,8 @@ export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
   priceBall: number;
   priceStrike: number;
+  qBall: number;
+  qStrike: number;
   marketId: string;
 }
 

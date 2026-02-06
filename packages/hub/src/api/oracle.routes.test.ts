@@ -116,6 +116,8 @@ describe('Oracle Routes', () => {
           type: 'ODDS_UPDATE',
           priceBall: 0.5,
           priceStrike: 0.5,
+          qBall: 0,
+          qStrike: 0,
           marketId: 'market-1',
         }),
       );

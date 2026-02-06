@@ -67,6 +67,8 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
       type: 'ODDS_UPDATE',
       priceBall: newPriceBall,
       priceStrike: newPriceStrike,
+      qBall,
+      qStrike,
       marketId,
     });
 

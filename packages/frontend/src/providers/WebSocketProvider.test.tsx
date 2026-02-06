@@ -81,6 +81,8 @@ describe('WebSocketProvider', () => {
         type: 'ODDS_UPDATE',
         priceBall: 0.55,
         priceStrike: 0.45,
+        qBall: 3,
+        qStrike: 2,
         marketId: 'market-1',
       });
       await flushPromises();

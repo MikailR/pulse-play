@@ -51,6 +51,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       type: 'ODDS_UPDATE',
       priceBall,
       priceStrike,
+      qBall: market.qBall,
+      qStrike: market.qStrike,
       marketId: market.id,
     });
 

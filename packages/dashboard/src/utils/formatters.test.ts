@@ -83,6 +83,8 @@ describe('formatWsMessage', () => {
       type: 'ODDS_UPDATE',
       priceBall: 0.45,
       priceStrike: 0.55,
+      qBall: 5,
+      qStrike: 8,
       marketId: 'market-1',
     };
     expect(formatWsMessage(msg)).toBe('Ball: 45.0%, Strike: 55.0%');

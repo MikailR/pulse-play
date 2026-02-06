@@ -147,6 +147,8 @@ describe('Bet Routes', () => {
       expect.objectContaining({
         type: 'ODDS_UPDATE',
         marketId: 'm1',
+        qBall: expect.any(Number),
+        qStrike: expect.any(Number),
       }),
     );
   });

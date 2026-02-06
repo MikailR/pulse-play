@@ -226,7 +226,6 @@ describe('api', () => {
         json: async () => ({
           address: '0xMM',
           balance: '10000000',
-          isConnected: true,
         }),
       });
 
@@ -235,7 +234,6 @@ describe('api', () => {
       expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/mm/info');
       expect(result.address).toBe('0xMM');
       expect(result.balance).toBe('10000000');
-      expect(result.isConnected).toBe(true);
     });
   });
 

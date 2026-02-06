@@ -117,20 +117,6 @@ export function MMBalanceCard({ className = '', refreshKey }: MMBalanceCardProps
             ${formatBalance(info?.balance ?? '0')}
           </span>
         </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-gray-400">Connection</span>
-          <span
-            className={`px-3 py-1 rounded text-sm font-medium ${
-              info?.isConnected
-                ? 'bg-green-500/20 text-green-400'
-                : 'bg-red-500/20 text-red-400'
-            }`}
-            data-testid="mm-connection-status"
-          >
-            {info?.isConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
       </div>
     </div>
   );

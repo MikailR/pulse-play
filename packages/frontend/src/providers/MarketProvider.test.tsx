@@ -138,6 +138,8 @@ describe('MarketProvider', () => {
         type: 'ODDS_UPDATE',
         priceBall: 0.65,
         priceStrike: 0.35,
+        qBall: 10,
+        qStrike: 5,
         marketId: 'market-1',
       });
       await flushPromises();

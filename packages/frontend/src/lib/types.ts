@@ -99,6 +99,8 @@ export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
   priceBall: number;
   priceStrike: number;
+  qBall: number;
+  qStrike: number;
   marketId: string;
 }
 
@@ -153,7 +155,6 @@ export type WsMessage =
 export interface MMInfoResponse {
   address: string;
   balance: string;
-  isConnected: boolean;
 }
 
 export interface MMFaucetResponse {
