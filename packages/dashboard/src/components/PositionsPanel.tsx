@@ -16,9 +16,10 @@ interface PositionsPanelProps {
   scrollOffset: number;
   visibleCount: number;
   isActive: boolean;
+  panelWidth: number;
 }
 
-export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive }: PositionsPanelProps) {
+export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive, panelWidth }: PositionsPanelProps) {
   const displayPositions = positions.slice(scrollOffset, scrollOffset + visibleCount);
   const endIndex = Math.min(scrollOffset + visibleCount, positions.length);
   const showIndicator = positions.length > visibleCount;
@@ -34,7 +35,7 @@ export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive
       {/* Title */}
       <Box justifyContent="center" gap={1}>
         <Text bold color="yellow">
-          ⚡ STATE CHANNELS ({positions.length})
+          ⚡ APP SESSIONS ({positions.length})
         </Text>
         {showIndicator && (
           <Text color="gray" dimColor>
@@ -57,7 +58,7 @@ export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive
 
       {/* Separator */}
       <Text color="gray" dimColor>
-        {'─'.repeat(54)}
+        {'─'.repeat(panelWidth)}
       </Text>
 
       {/* Data rows */}

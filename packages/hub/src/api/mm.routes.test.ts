@@ -29,7 +29,8 @@ describe('MM Routes', () => {
     expect(body.isConnected).toBe(true);
   });
 
-  test('GET /api/mm/info returns balance "0" when disconnected', async () => {
+  test('GET /api/mm/info auto-connects and returns balance when initially disconnected', async () => {
+    // With lazy-connect, getBalance() auto-connects even if isConnected() was false
     (ctx.clearnodeClient.isConnected as jest.Mock).mockReturnValue(false);
 
     const res = await app.inject({
@@ -40,9 +41,9 @@ describe('MM Routes', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.address).toBe('0xMM');
-    expect(body.balance).toBe('0');
-    expect(body.isConnected).toBe(false);
-    expect(ctx.clearnodeClient.getBalance).not.toHaveBeenCalled();
+    // getBalance auto-connects and returns the balance
+    expect(body.balance).toBe('1000');
+    expect(body.isConnected).toBe(true);
   });
 
   test('GET /api/mm/info handles getBalance error gracefully', async () => {

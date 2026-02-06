@@ -68,7 +68,7 @@ export function App({ wsUrl, hubUrl }: AppProps) {
   const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Connect to WebSocket
-  const { connected, lastMessage, error: wsError, reconnectAttempts, reconnect } = useWebSocket(wsUrl);
+  const { connected, messageQueue, queueVersion, error: wsError, reconnectAttempts, reconnect } = useWebSocket(wsUrl);
 
   // Layout calculations
   // Header: 3 rows (border top + content + border bottom)
@@ -80,6 +80,7 @@ export function App({ wsUrl, hubUrl }: AppProps) {
   const positionsVisibleCount = Math.max(rows - 21, 1);
   const eventLogVisibleCount = Math.max(rows - 17, 1);
   const barWidth = Math.max(Math.floor(columns / 2) - 6, 10);
+  const leftPanelWidth = Math.max(Math.floor(columns / 2) - 4, 10); // 50% minus border + paddingX
 
   // Show status message for 2 seconds
   const showStatus = useCallback((msg: string) => {
@@ -323,38 +324,31 @@ export function App({ wsUrl, hubUrl }: AppProps) {
     }
   }, []);
 
-  // Handle incoming WebSocket messages
+  // Handle incoming WebSocket messages — drain the queue to avoid dropping messages
   useEffect(() => {
-    if (lastMessage) {
-      if (lastMessage.type !== 'STATE_SYNC' && lastMessage.type !== 'CONNECTION_COUNT') {
+    const messages = messageQueue.current!.splice(0);
+    for (const msg of messages) {
+      if (msg.type !== 'STATE_SYNC' && msg.type !== 'CONNECTION_COUNT') {
         const entry: EventLogEntry = {
           timestamp: new Date(),
-          type: lastMessage.type,
-          message: formatWsMessage(lastMessage),
-          raw: lastMessage,
+          type: msg.type,
+          message: formatWsMessage(msg),
+          raw: msg,
         };
 
         setEvents((prev) => {
           const next = [...prev, entry];
-          if (next.length > MAX_EVENT_LOG_SIZE) {
-            return next.slice(-MAX_EVENT_LOG_SIZE);
-          }
-          return next;
+          return next.length > MAX_EVENT_LOG_SIZE ? next.slice(-MAX_EVENT_LOG_SIZE) : next;
         });
 
-        // Auto-scroll event log to bottom if user hasn't manually scrolled
         if (!userScrolledRef.current) {
-          setEventLogScrollOffset((prev) => {
-            // Will be recalculated on next render, but set to a large value
-            // to keep at bottom
-            return Number.MAX_SAFE_INTEGER;
-          });
+          setEventLogScrollOffset(() => Number.MAX_SAFE_INTEGER);
         }
       }
 
-      processMessage(lastMessage);
+      processMessage(msg);
     }
-  }, [lastMessage, processMessage]);
+  }, [queueVersion, processMessage, messageQueue]);
 
   // Clamp event log scroll offset when events change
   useEffect(() => {
@@ -386,7 +380,7 @@ export function App({ wsUrl, hubUrl }: AppProps) {
     uiMode === 'command' ? ' [COMMAND]' : '';
 
   return (
-    <Box flexDirection="column" height={rows}>
+    <Box flexDirection="column" height={rows - 2}>
       {/* Header */}
       <Box
         borderStyle="double"
@@ -420,6 +414,7 @@ export function App({ wsUrl, hubUrl }: AppProps) {
               scrollOffset={positionsScrollOffset}
               visibleCount={positionsVisibleCount}
               isActive={activePanel === 'positions'}
+              panelWidth={leftPanelWidth}
             />
           </Box>
 

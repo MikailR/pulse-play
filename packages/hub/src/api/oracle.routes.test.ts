@@ -423,6 +423,7 @@ describe('Oracle Routes', () => {
       (ctx.clearnodeClient.submitAppState as jest.Mock).mockRejectedValueOnce(new Error('Clearnode down'));
 
       const sendToSpy = jest.spyOn(ctx.ws, 'sendTo');
+      const broadcastSpy = jest.spyOn(ctx.ws, 'broadcast');
 
       const res = await app.inject({
         method: 'POST',
@@ -435,6 +436,10 @@ describe('Oracle Routes', () => {
       // Both users should still get their BET_RESULT messages
       expect(sendToSpy).toHaveBeenCalledWith('0xBob', expect.objectContaining({ result: 'LOSS' }));
       expect(sendToSpy).toHaveBeenCalledWith('0xAlice', expect.objectContaining({ result: 'WIN' }));
+      // Loser session should still be marked settled even though Clearnode failed
+      expect(broadcastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'SESSION_SETTLED', appSessionId: 'sess-0xBob', status: 'settled' }),
+      );
     });
 
     test('processes losers before winners', async () => {

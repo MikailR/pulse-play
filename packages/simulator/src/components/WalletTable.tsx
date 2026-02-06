@@ -45,7 +45,6 @@ export function WalletTable({ wallets, scrollOffset, visibleCount, isActive }: W
           <Text color="gray" bold>{'Balance'.padEnd(10)}</Text>
           <Text color="gray" bold>{'Side'.padEnd(8)}</Text>
           <Text color="gray" bold>{'Bets'.padEnd(6)}</Text>
-          <Text color="gray" bold>CN</Text>
         </Box>
       )}
 
@@ -61,7 +60,6 @@ export function WalletTable({ wallets, scrollOffset, visibleCount, isActive }: W
                 {(wallet.side ?? '-').padEnd(8)}
               </Text>
               <Text>{`${wallet.betCount}/${wallet.maxBets}`.padEnd(6)}</Text>
-              <Text color={cnColor}>{icon}</Text>
             </Box>
           );
         })

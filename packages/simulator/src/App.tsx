@@ -67,6 +67,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
   const [adminState, setAdminState] = useState<AdminStateResponse | null>(null);
   const [simStatus, setSimStatus] = useState<SimStatus>('idle');
   const [results, setResults] = useState<SimResults | null>(null);
+  const [mmBalance, setMmBalance] = useState<string | null>(null);
 
   // UI state
   const [uiMode, setUiMode] = useState<UIMode>('normal');
@@ -75,6 +76,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
   const [eventLogScrollOffset, setEventLogScrollOffset] = useState(0);
   const [commandBuffer, setCommandBuffer] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
 
   const userScrolledRef = useRef(false);
   const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -88,6 +90,14 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
   const walletsVisibleCount = Math.max(topHeight - 3, 1);        // header + border rows
   const eventLogVisibleCount = Math.max(bottomHeight - 2, 1);
   const barWidth = Math.max(Math.floor(columns * 0.45) - 6, 10);
+
+  // Refresh MM balance from hub
+  const refreshMMBalance = useCallback(async () => {
+    try {
+      const info = await hubClient.getMMInfo();
+      setMmBalance(info.balance);
+    } catch { /* non-critical */ }
+  }, [hubClient]);
 
   // Show status message for 2 seconds
   const showStatus = useCallback((msg: string) => {
@@ -146,7 +156,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             showStatus('No wallets. Run :wallets <n> first');
             return;
           }
-          showStatus(`Funding ${all.length} wallets...`);
+          setLoadingMessage(`Funding 0/${all.length}...`);
 
           const BATCH_SIZE = 5;
           let funded = 0;
@@ -175,19 +185,24 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
               }
             }
             setWallets(walletManager.getAll()); // Update UI after each batch
+            setLoadingMessage(`Funding ${funded}/${all.length}...`);
           }
+          setLoadingMessage(null);
           showStatus(`Funded ${funded}/${all.length} wallets`);
           break;
         }
 
         case 'fund-mm': {
           const count = parseInt(parts[1], 10) || 5;
-          showStatus(`Funding MM (${count} x $10)...`);
+          setLoadingMessage(`Funding MM (${count} x $10)...`);
           try {
             await hubClient.fundMM(count);
+            await refreshMMBalance();
+            setLoadingMessage(null);
             showStatus(`MM funded (${count} x $10)`);
             addEvent('wallet-funded', `MM funded (${count} x $10)`);
           } catch (err) {
+            setLoadingMessage(null);
             showStatus(`MM fund failed: ${(err as Error).message}`);
           }
           break;
@@ -217,6 +232,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           simEngine.stop();
           setSimStatus('idle');
           await hubClient.resolveMarket(outcome);
+          await refreshMMBalance();
           showStatus(`Market resolved: ${outcome}`);
           break;
         }
@@ -232,6 +248,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             try {
               const mmInfo = await hubClient.getMMInfo();
               mmAddress = mmInfo.address;
+              setMmBalance(mmInfo.balance);
             } catch {
               showStatus('Cannot reach MM. Is hub running?');
               return;
@@ -272,6 +289,8 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
               ? `Market: ${state.market.id} [${state.market.status}] Positions: ${state.positionCount} WS: ${state.connectionCount}`
               : 'No market active';
             showStatus(status);
+            // Refresh MM balance (non-blocking)
+            refreshMMBalance();
             // Refresh balances for all funded wallets (non-blocking)
             const allWallets = walletManager.getAll();
             const fundedWallets = allWallets.filter((w) => w.funded);
@@ -299,6 +318,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           setEvents([]);
           try {
             await hubClient.resetBackend();
+            await refreshMMBalance();
             showStatus('Backend reset complete');
           } catch (err) {
             showStatus(`Reset failed: ${(err as Error).message}`);
@@ -334,7 +354,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     } catch (err) {
       showStatus(`Error: ${(err as Error).message}`);
     }
-  }, [walletManager, hubClient, clearnodePool, simEngine, adminState, showStatus, addEvent, reconnect, exit]);
+  }, [walletManager, hubClient, clearnodePool, simEngine, adminState, showStatus, addEvent, reconnect, exit, refreshMMBalance]);
 
   // Input routing
   useInput((input, key) => {
@@ -418,6 +438,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         // Compute results on resolution
         if (msg.status === 'RESOLVED' && msg.outcome) {
           computeResults(msg.marketId, msg.outcome);
+          refreshMMBalance();
         }
         break;
       case 'GAME_STATE':
@@ -437,9 +458,10 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
       case 'BET_RESULT':
         break;
       case 'SESSION_SETTLED':
+        refreshMMBalance();
         break;
     }
-  }, [walletManager]);
+  }, [walletManager, refreshMMBalance]);
 
   // Compute results helper
   const computeResults = useCallback(async (marketId: string, outcome: string) => {
@@ -493,6 +515,11 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     }
   }, [events.length, eventLogVisibleCount]);
 
+  // Fetch MM balance on mount
+  useEffect(() => {
+    refreshMMBalance();
+  }, [refreshMMBalance]);
+
   // Cleanup
   useEffect(() => {
     return () => {
@@ -531,6 +558,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
                 priceStrike={prices.priceStrike}
                 barWidth={barWidth}
                 betCount={totalBets}
+                mmBalance={mmBalance}
               />
               <ResultsPanel results={results} />
             </Box>
@@ -554,6 +582,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           mode={uiMode === 'command' ? 'command' : 'normal'}
           commandBuffer={commandBuffer}
           statusMessage={statusMessage}
+          loadingMessage={loadingMessage}
           simStatus={simStatus}
           wsConnected={connected}
         />

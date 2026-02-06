@@ -142,17 +142,18 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
           ],
         });
         ctx.log.resolutionSessionClosed(loser.address, loser.appSessionId);
-
-        ctx.positionTracker.updateSessionStatus(loser.appSessionId, 'settled');
-        ctx.ws.broadcast({
-          type: 'SESSION_SETTLED',
-          appSessionId: loser.appSessionId,
-          status: 'settled' as const,
-          address: loser.address,
-        });
       } catch (err) {
         ctx.log.error(`resolution-loser-${loser.address}`, err);
       }
+
+      // Always update status + notify (outside try/catch so losers are settled even if Clearnode fails)
+      ctx.positionTracker.updateSessionStatus(loser.appSessionId, 'settled');
+      ctx.ws.broadcast({
+        type: 'SESSION_SETTLED',
+        appSessionId: loser.appSessionId,
+        status: 'settled' as const,
+        address: loser.address,
+      });
 
       ctx.ws.sendTo(loser.address, {
         type: 'BET_RESULT',
@@ -192,17 +193,18 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
           });
           ctx.log.resolutionTransfer(winner.address, profit);
         }
-
-        ctx.positionTracker.updateSessionStatus(winner.appSessionId, 'settled');
-        ctx.ws.broadcast({
-          type: 'SESSION_SETTLED',
-          appSessionId: winner.appSessionId,
-          status: 'settled' as const,
-          address: winner.address,
-        });
       } catch (err) {
         ctx.log.error(`resolution-winner-${winner.address}`, err);
       }
+
+      // Always update status + notify (outside try/catch so winners are settled even if Clearnode fails)
+      ctx.positionTracker.updateSessionStatus(winner.appSessionId, 'settled');
+      ctx.ws.broadcast({
+        type: 'SESSION_SETTLED',
+        appSessionId: winner.appSessionId,
+        status: 'settled' as const,
+        address: winner.address,
+      });
 
       ctx.ws.sendTo(winner.address, {
         type: 'BET_RESULT',

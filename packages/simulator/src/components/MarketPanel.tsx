@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { AdminStateResponse } from '../types.js';
-import { getStatusColor, formatDollars } from '../utils/formatters.js';
+import { getStatusColor, formatDollars, formatBalance } from '../utils/formatters.js';
 import { PriceBar } from './PriceBar.js';
 
 interface MarketPanelProps {
@@ -10,9 +10,10 @@ interface MarketPanelProps {
   priceStrike: number;
   barWidth?: number;
   betCount?: number;
+  mmBalance?: string | null;
 }
 
-export function MarketPanel({ state, priceBall, priceStrike, barWidth = 20, betCount = 0 }: MarketPanelProps) {
+export function MarketPanel({ state, priceBall, priceStrike, barWidth = 20, betCount = 0, mmBalance }: MarketPanelProps) {
   const market = state?.market;
   const statusColor = market ? getStatusColor(market.status) : 'gray';
 
@@ -50,6 +51,9 @@ export function MarketPanel({ state, priceBall, priceStrike, barWidth = 20, betC
             </Text>
             <Text color="gray" dimColor>
               positions: {state?.positionCount ?? 0}
+            </Text>
+            <Text color="green" dimColor>
+              MM: {mmBalance ? formatBalance(mmBalance) : '--'}
             </Text>
           </Box>
         </>

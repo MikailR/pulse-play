@@ -8,17 +8,27 @@ interface CommandBarProps {
   mode: CommandBarMode;
   commandBuffer: string;
   statusMessage: string | null;
+  loadingMessage?: string | null;
   simStatus: SimStatus;
   wsConnected: boolean;
 }
 
-export function CommandBar({ mode, commandBuffer, statusMessage, simStatus, wsConnected }: CommandBarProps) {
+export function CommandBar({ mode, commandBuffer, statusMessage, loadingMessage, simStatus, wsConnected }: CommandBarProps) {
   const simColor = simStatus === 'running' ? 'green' : simStatus === 'stopping' ? 'yellow' : 'gray';
 
   if (statusMessage) {
     return (
       <Box paddingX={1} justifyContent="space-between">
         <Text color="green" bold>{statusMessage}</Text>
+        <Text color={simColor}>SIM: {simStatus.toUpperCase()}</Text>
+      </Box>
+    );
+  }
+
+  if (loadingMessage) {
+    return (
+      <Box paddingX={1} justifyContent="space-between">
+        <Text color="yellow">{'\u28FF'} {loadingMessage}</Text>
         <Text color={simColor}>SIM: {simStatus.toUpperCase()}</Text>
       </Box>
     );

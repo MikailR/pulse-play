@@ -1173,3 +1173,48 @@ Date: 2026-02-06
 ### Test Results
 - **Simulator:** 5 suites, 106 passed (was 102, +4 new)
 - **TypeScript:** ✅ clean (tsc --noEmit passes)
+
+---
+
+## Dashboard Polish + Loser Session Status Bug Fix
+Date: 2026-02-06
+
+### Bug Fixed: Losers stay "open" after market resolution
+**Root cause:** In `oracle.routes.ts`, `updateSessionStatus('settled')` and `SESSION_SETTLED` broadcast were INSIDE the try/catch block for Clearnode calls. If `submitAppState()` or `closeSession()` threw, the catch fired and the status update + broadcast were skipped. Meanwhile `BET_RESULT` was sent outside the try/catch, so the user saw "you lost" but the session stayed "open" on the dashboard.
+
+**Fix:** Moved `updateSessionStatus`, `SESSION_SETTLED` broadcast, and `BET_RESULT` send OUTSIDE the try/catch for both losers AND winners. Now they always execute regardless of Clearnode call success. Updated the "continues resolution" test to verify SESSION_SETTLED is broadcast even when Clearnode fails.
+
+### Dashboard UI Fixes
+1. **Title renamed:** "⚡ STATE CHANNELS" → "⚡ APP SESSIONS" in PositionsPanel
+2. **Dynamic separator width:** Added `panelWidth` prop to PositionsPanel, computed as `Math.floor(columns/2) - 4` in App.tsx, used for separator `'─'.repeat(panelWidth)` instead of hardcoded 54
+3. **Border overlap fix:** Added `borderLeft={false}` to SystemInfo.tsx and EventLog.tsx outer Box — eliminates double-line where left column's right border meets right column's left border
+
+### Pre-existing bug also fixed
+- `mm.routes.test.ts` "disconnected" test was failing because it expected `isConnected()` gate in mm.routes.ts, but that was removed during the lazy-connect refactor. Updated test to match actual lazy-connect behavior (getBalance auto-connects).
+
+### Files Modified
+- `hub/src/api/oracle.routes.ts` — Status update + broadcasts moved outside try/catch for losers AND winners
+- `hub/src/api/oracle.routes.test.ts` — Added SESSION_SETTLED assertion to Clearnode-failure test
+- `hub/src/api/mm.routes.test.ts` — Fixed pre-existing test to match lazy-connect behavior
+- `dashboard/src/components/PositionsPanel.tsx` — Renamed title, added panelWidth prop, dynamic separator
+- `dashboard/src/App.tsx` — Computed + passed leftPanelWidth
+- `dashboard/src/components/SystemInfo.tsx` — Added borderLeft={false}
+- `dashboard/src/components/EventLog.tsx` — Added borderLeft={false}
+
+### Test Results
+- **Hub:** 18 suites, 233 passed (6 skipped)
+- **Dashboard:** 1 suite, 47 passed
+- **Hub build:** ✅ clean
+- **Dashboard build:** ✅ clean
+
+--- 2026-02-06: Dashboard WebSocket Message Queue Fix ---
+- ROOT CAUSE FOUND: Dashboard was dropping WebSocket messages due to React state batching.
+  When two WS messages arrived in the same event loop tick, setLastMessage() was called twice
+  but React batched them, keeping only the last value. This caused loser SESSION_SETTLED
+  messages to be silently dropped (winner's SESSION_SETTLED overwrote loser's).
+- FIX: Replaced useState-based lastMessage in useWebSocket.ts with a ref-based message queue.
+  Messages are pushed to messageQueueRef.current, and a queueVersion counter triggers re-renders.
+  App.tsx drains the queue with splice(0) in useEffect, processing ALL messages in order.
+- Also reverted borderLeft={false} on EventLog and SystemInfo panels (left borders restored).
+- Files changed: useWebSocket.ts, App.tsx, SystemInfo.tsx, EventLog.tsx
+- All 47 dashboard tests pass, TypeScript builds clean.
