@@ -211,9 +211,9 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         case 'open': {
           showStatus('Activating game & opening market...');
           await hubClient.setGameState(true);
-          const res = await hubClient.openMarket();
+          await hubClient.openMarket();
           setResults(null);
-          showStatus(`Market ${res.market.id} opened`);
+          // showStatus(`Market ${res.market.id} opened`);
           break;
         }
 

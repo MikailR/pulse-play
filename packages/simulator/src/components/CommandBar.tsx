@@ -16,27 +16,9 @@ interface CommandBarProps {
 export function CommandBar({ mode, commandBuffer, statusMessage, loadingMessage, simStatus, wsConnected }: CommandBarProps) {
   const simColor = simStatus === 'running' ? 'green' : simStatus === 'stopping' ? 'yellow' : 'gray';
 
-  if (statusMessage) {
-    return (
-      <Box paddingX={1} justifyContent="space-between">
-        <Text color="green" bold>{statusMessage}</Text>
-        <Text color={simColor}>SIM: {simStatus.toUpperCase()}</Text>
-      </Box>
-    );
-  }
-
-  if (loadingMessage) {
-    return (
-      <Box paddingX={1} justifyContent="space-between">
-        <Text color="yellow">{'\u28FF'} {loadingMessage}</Text>
-        <Text color={simColor}>SIM: {simStatus.toUpperCase()}</Text>
-      </Box>
-    );
-  }
-
   if (mode === 'command') {
     return (
-      <Box paddingX={1} justifyContent="space-between">
+      <Box paddingX={1} justifyContent="space-between" flexGrow={1}>
         <Box>
           <Text color="yellow" bold>:</Text>
           <Text color="yellow">{commandBuffer}</Text>
@@ -47,8 +29,26 @@ export function CommandBar({ mode, commandBuffer, statusMessage, loadingMessage,
     );
   }
 
+  if (statusMessage) {
+    return (
+      <Box paddingX={1} justifyContent="space-between" flexGrow={1}>
+        <Text color="green" bold>{statusMessage}</Text>
+        <Text color={simColor}>SIM: {simStatus.toUpperCase()}</Text>
+      </Box>
+    );
+  }
+
+  if (loadingMessage) {
+    return (
+      <Box paddingX={1} justifyContent="space-between" flexGrow={1}>
+        <Text color="yellow">{'\u28FF'} {loadingMessage}</Text>
+        <Text color={simColor}>SIM: {simStatus.toUpperCase()}</Text>
+      </Box>
+    );
+  }
+
   return (
-    <Box paddingX={1} justifyContent="space-between">
+    <Box paddingX={1} justifyContent="space-between" flexGrow={1}>
       <Box gap={1}>
         <Text color="gray">Tab</Text>
         <Text dimColor>panel</Text>
