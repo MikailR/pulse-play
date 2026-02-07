@@ -1504,3 +1504,295 @@ All 12 steps of the multi-market frontend plan are complete. The frontend has be
 - For 3+ outcome markets, old fields default to first 2 elements (degraded display)
 - To fully support N outcomes: update to use `prices[]`/`quantities[]`/`outcomes[]` arrays
 - Dashboard LMSR price calculations need updating to use N-outcome engine
+
+---
+
+## Frontend: Auto-reconnect Clearnode WebSocket
+Date: 2026-02-06
+
+### Problem
+Clearnode WebSocket server drops idle connections. Frontend had no recovery — `assertReady()` in
+`methods.ts` just threw, making bets permanently fail until manual page refresh. Backend already
+solved this with `ensureConnected()` lazy-connect pattern.
+
+### Key Insight
+ECDSA session signer survives WebSocket reconnections. If signer hasn't expired, only a new
+WebSocket is needed — no re-authentication, no MetaMask popup. Full re-auth only when session
+has actually expired.
+
+### Solution: Two-tier auto-reconnect in ClearnodeProvider
+1. **Detection**: Added `onclose`/`onerror` handlers on WebSocket after auth and after light reconnect.
+   Status goes to 'disconnected' but signer/expiresAt are preserved (not nulled).
+2. **Recovery**: `ensureConnected()` called before every method callback:
+   - Signer valid + WS dead → `reconnectWsOnly()` (opens WS only, no MetaMask)
+   - Signer expired/null → `authenticate()` (full 3-step auth, MetaMask popup)
+   - Concurrent calls → deduplicated via `connectPromiseRef`
+3. **Stale closure fix**: Method callbacks use `signerRef.current` (ref) instead of `signer` (state).
+   Dependencies changed from `[signer, ...]` to `[ensureConnected, ...]`.
+
+### Implementation Details
+- Added 3 refs: `signerRef`, `expiresAtRef`, `connectPromiseRef`
+- Refs synced everywhere state is set (auth success/failure, reconnect, disconnect, cleanup effect)
+- `authenticate()` now re-throws errors (callers wrapped in try/catch where needed)
+- `refreshBalance` uses refs but does NOT auto-reconnect (passive polling)
+- `getConfig` (no signer needed) still calls `ensureConnected()` for WS readiness
+
+### Files Modified
+- `packages/frontend/src/providers/ClearnodeProvider.tsx` — Refs, reconnectWsOnly, ensureConnected,
+  updated method callbacks, onclose/onerror handlers, authenticate re-throws
+- `packages/frontend/src/providers/ClearnodeProvider.test.tsx` — 6 new tests
+
+### New Tests
+1. Light reconnects (WS only) when signer is still valid
+2. Full re-auth when signer has expired
+3. Deduplicates concurrent reconnection attempts
+4. Status updates to disconnected when WS close event fires (signer preserved)
+5. Method returns correct result after light reconnect
+6. Error propagates when reconnection fails
+
+### Test Results
+- **Frontend:** 24 suites, 191 passed (was 185, +6 new)
+- **No changes** to methods.ts, rpc.ts, auth.ts, types.ts, or useBet.ts
+
+---
+
+## Fix: Clearnode Connection Dropping + Winner Payout Missing
+Date: 2026-02-06
+
+### Bug 1: Connection keeps dropping (frontend)
+**Root cause:** `useBet.ts` gated on `clearnodeStatus !== 'connected'` before calling `createAppSession`. When the Clearnode WS dropped (normal idle timeout), status went to `'disconnected'` and bets were rejected immediately — `createAppSession`'s built-in `ensureConnected()` (which handles transparent reconnection) was never reached.
+
+**Fix:**
+- Removed `clearnodeStatus` check (lines 52-57), destructure, and dependency from `useBet.ts`
+- `createAppSession` already calls `ensureConnected()` internally which does light WS-only reconnect if signer is valid, or full re-auth if expired
+- Replaced the "Clearnode not connected" test with a test verifying bets succeed via transparent reconnection when status is 'disconnected'
+
+### Bug 2: Winner doesn't receive winnings from market maker
+**Root cause (allowances):** `server.ts` created ClearnodeClient with `allowances: []`, overriding the default allowance in `auth.ts`. The MM's session key had no asset allowance, so `transfer()` (which sends profit from MM ledger to winner) failed silently.
+
+**Root cause (error handling):** Winner settlement had `closeSession` and `transfer` in a single try/catch. When `transfer` failed, the error was caught but the user still saw "You Won!" (BET_RESULT sent outside try/catch). User got their bet back from `closeSession` but the profit from `transfer` was lost.
+
+**Fixes:**
+1. `server.ts` — Changed `allowances: []` to `allowances: [{ asset: 'ytest.usd', amount: '100000000000' }]` ($100k)
+2. `oracle.routes.ts` — Separated winner `closeSession` and `transfer` into individual try/catch blocks with specific error labels (`resolution-winner-closeSession-*` and `resolution-winner-transfer-*`)
+3. Added test: "winner gets BET_RESULT even when transfer fails" verifying error isolation and specific error logging
+
+### Files Modified
+- `packages/frontend/src/hooks/useBet.ts` — Removed `clearnodeStatus` gate
+- `packages/frontend/src/hooks/useBet.test.ts` — Replaced "not connected" test with reconnection test
+- `packages/hub/src/server.ts` — Added proper allowances to ClearnodeClient
+- `packages/hub/src/api/oracle.routes.ts` — Separate try/catch for closeSession vs transfer
+- `packages/hub/src/api/oracle.routes.test.ts` — Added partial settlement failure test
+
+### Test Results
+- **Hub:** 17 suites, 233 passed (+1 new oracle test), 1 pre-existing integration timeout (unrelated)
+- **Frontend:** 24 suites, 191 passed (test count unchanged — replaced 1 test with 1 test)
+
+---
+
+## Fix: Clearnode WS Disconnect Leaking Into UI
+Date: 2026-02-06
+
+### Problem
+When Clearnode WebSocket drops (normal idle timeout), `ClearnodeProvider` sets `status` to `'disconnected'`. UI components gated on `status === 'connected'` showed wrong states:
+1. **AccountBalanceCard** showed "Connect wallet to view balance" despite having cached balance
+2. **SessionCard** badge flipped to "Not Authenticated" despite valid signer
+3. **refreshBalance** early-returned when WS dead (couldn't refresh)
+
+### Fix 1: refreshBalance auto-reconnects
+- Added `await ensureConnected()` at top of `refreshBalance` (wrapped in try/catch)
+- Moved `refreshBalance` definition after `ensureConnected` to avoid reference-before-definition
+- Dependency array changed from `[]` to `[ensureConnected]`
+
+### Fix 2: AccountBalanceCard gates on balance not status
+- Replaced `status === 'connected'` check with `balance === null`
+- Balance is set after first auth, preserved on WS drop, only cleared on explicit disconnect
+- Pulls `balance` + `refreshBalance` from context (dropped `status`)
+
+### Fix 3: SessionCard decoupled from WS liveness
+- `getStatusBadge()` now takes `expiresAt` as third parameter
+- Priority: transitional states → error → `isSessionValid` (Active) → `expiresAt > 0 && !valid` (Expired) → fallthrough (Not Authenticated)
+- Expiry section guard changed from `status === 'connected'` to `expiresAt > 0`
+
+### Files Modified
+- `packages/frontend/src/providers/ClearnodeProvider.tsx` — refreshBalance calls ensureConnected, moved after ensureConnected definition
+- `packages/frontend/src/components/account/AccountBalanceCard.tsx` — Gate on `balance !== null` not `status`
+- `packages/frontend/src/components/account/SessionCard.tsx` — Badge + expiry decoupled from WS status
+
+### Tests Updated
+- `ClearnodeProvider.test.tsx` — +2 tests (refreshBalance auto-reconnect, reconnect failure non-fatal)
+- `AccountBalanceCard.test.tsx` — Updated "not-connected" to gate on `balance: null`, changed "null balance" to "zero balance", +1 test (disconnected with cached balance)
+- `SessionCard.test.tsx` — +2 tests (Active when disconnected but valid, Expired badge when signer expires)
+
+### Test Results
+- **Frontend:** 24 suites, 196 passed (was 191, +5 new)
+
+---
+
+## Fix: "authentication required" After Clearnode WS Idle Disconnect
+Date: 2026-02-06
+
+### Root Cause
+After a few minutes idle, the Clearnode server drops the WebSocket. `ensureConnected()` detected the dead WS and took a "light reconnect" path (`reconnectWsOnly()`), which opened a **raw, unauthenticated WebSocket** — it never sent the 3-step EIP-712 auth handshake. The Clearnode server binds auth state per-WebSocket, so it rejected the next RPC call with `{"error":"authentication required"}`.
+
+### Fix: Two Changes
+
+**1. WebSocket keepalive heartbeat**
+- Added `useEffect` that sends `createGetConfigMessageV2()` (lightest RPC, no signer needed) every 30s while WS is OPEN
+- Uses `wsRef` (ref) — no React state dependency, interval runs for provider lifetime
+- Prevents the Clearnode server's idle timeout from ever triggering
+- Send failures silently caught (non-fatal)
+
+**2. Removed broken `reconnectWsOnly`, simplified `ensureConnected`**
+- Deleted `reconnectWsOnly` — it opened a new WS without authentication, fundamentally broken
+- Simplified `ensureConnected` to always call `authenticate()` when WS is dead (full 3-step handshake)
+- This matches the hub's behavior where every reconnect does full auth
+- Concurrent reconnection attempts still deduplicated via `connectPromiseRef`
+
+### Files Modified
+- `packages/frontend/src/providers/ClearnodeProvider.tsx` — Added `createGetConfigMessageV2` import, keepalive `useEffect`, deleted `reconnectWsOnly`, simplified `ensureConnected`
+- `packages/frontend/src/providers/ClearnodeProvider.test.tsx` — Updated 4 reconnect tests (now verify full auth), added 1 keepalive test
+
+### Test Updates
+- Renamed "light reconnects (WS only)" → "reconnects with full auth when WS drops" — asserts `authenticateBrowser` called 2x
+- Renamed "method returns correct result after light reconnect" → "after reconnect" — added auth mock
+- Updated dedup test and refreshBalance reconnect test to include auth mocks
+- Added "sends keepalive get_config message every 30 seconds" test using fake timers
+
+### Test Results
+- **Frontend:** 24 suites, 197 passed (was 196, +1 new keepalive test)
+
+---
+
+## Fix: Intermittent Faucet Funding Failures
+Date: 2026-02-06
+
+### Problem
+When the simulator runs `:fund` for 10+ wallets, concurrent HTTP requests to the external sandbox faucet cause 503/500 errors. No retry logic and no concurrency control at any level.
+
+### Solution: Three Layers
+
+**Layer 1 — Retry with exponential backoff** (`faucet.ts`)
+- Max 3 retries (4 total attempts)
+- Backoff: 500ms base, doubling each retry, capped at 5s
+- 0-20% random jitter to prevent thundering herd
+- Retry on 5xx and network TypeError; throw immediately on 4xx
+- `console.warn` for retries (suppressed in test via `NODE_ENV`)
+
+**Layer 2 — Global request serialization queue** (`faucet.ts`)
+- `requestFaucetQueued()` chains onto a module-level promise
+- Only one HTTP request to external faucet in-flight at a time
+- `_resetFaucetQueue()` exported for test cleanup
+- Both `faucet.routes.ts` and `client.ts` switched to `requestFaucetQueued`
+
+**Layer 3 — Reduced simulator concurrency** (`simulator/App.tsx`)
+- `BATCH_SIZE` reduced from 5 to 2
+- 1000ms inter-batch delay (skipped after last batch)
+
+### Files Modified
+- `packages/hub/src/modules/clearnode/faucet.ts` — Retry + queue implementation
+- `packages/hub/src/modules/clearnode/faucet.test.ts` — **New** — 10 tests (7 retry + 3 queue)
+- `packages/hub/src/api/faucet.routes.ts` — Import `requestFaucetQueued as requestFaucet`
+- `packages/hub/src/api/faucet.routes.test.ts` — Mock exports `requestFaucetQueued`
+- `packages/hub/src/modules/clearnode/client.ts` — Import + use `requestFaucetQueued`
+- `packages/hub/src/modules/clearnode/client.test.ts` — Mock exports `requestFaucetQueued`
+- `packages/simulator/src/App.tsx` — BATCH_SIZE=2, 1s inter-batch delay
+
+### Test Results
+- **Hub:** 19 suites, 244 passed (was 233, +10 new faucet tests, 1 suite skipped)
+- **Simulator:** 5 suites, 106 passed (unchanged)
+- **Total hub+sim:** 350 passing tests
+
+---
+
+## Rich sessionData Across App Session Lifecycle
+Date: 2026-02-06
+
+### What was done:
+Implemented a 3-version sessionData lifecycle that makes each Clearnode app session self-describing:
+- **V1** (bettor creates session): bet intent — marketId, outcome, amount, timestamp
+- **V2** (hub accepts bet): LMSR confirmation — shares, effectivePricePerShare, pre/post-bet odds
+- **V3** (hub settles): resolution — result (WIN/LOSS), payout, profit, shares, costPaid
+
+### Hub Changes
+
+1. **session-data.ts** (NEW) — `SessionDataV1`, `SessionDataV2`, `SessionDataV3` types + `encodeSessionData`/`decodeSessionData` helpers
+2. **session-data.test.ts** (NEW) — 6 tests (round-trip V1/V2/V3, version discrimination, valid JSON, invalid JSON throws)
+3. **tracker.ts** — Added `updateAppSessionVersion(appSessionId, version)` method
+4. **tracker.test.ts** — +2 tests (version update + no-op on unknown)
+5. **bet.routes.ts** — Captures pre-bet odds, builds V2 SessionData after bet acceptance, calls `submitAppState` with V2 sessionData (non-fatal try/catch), updates appSessionVersion on success
+6. **bet.routes.test.ts** — +4 tests (V2 sessionData content, V2 failure non-fatal, version updated on success, version unchanged on failure)
+7. **oracle.routes.ts** — Builds V3 SessionData for losers (submitAppState + closeSession) and winners (closeSession), includes resolution, result, payout, profit
+8. **oracle.routes.test.ts** — +3 tests (loser submitAppState V3, loser closeSession V3, winner closeSession V3). Updated existing "calls submitAppState + closeSession for losers" test to clear mocks before resolution.
+9. **logger.ts** — Added `betSessionDataUpdated()` and `betSessionDataFailed()` methods
+10. **logger.test.ts** — Updated both test blocks with new logger methods
+
+### Frontend Changes
+
+1. **lib/clearnode/session-data.ts** (NEW) — `SessionDataV1` type + `encodeSessionData` helper (V1 only, client-side)
+2. **lib/clearnode/index.ts** — Added session-data export
+3. **hooks/useBet.ts** — Builds V1 sessionData before `createAppSession`, passes `sessionData: encodeSessionData(v1Data)`
+4. **hooks/useBet.test.ts** — +1 test (V1 sessionData contains marketId, outcome, amount). Updated existing "full success flow" to use `objectContaining` for new sessionData field.
+
+### Simulator Changes
+
+1. **core/clearnode-pool.ts** — Added optional `sessionData?: string` parameter to `createAppSession`, passes to SDK as `session_data`
+2. **core/simulation-engine.ts** — Builds V1 sessionData object, passes `JSON.stringify(v1Data)` to `createAppSession`
+3. **core/clearnode-pool.test.ts** — +1 test (sessionData passed to SDK)
+4. **core/simulation-engine.test.ts** — +1 test (V1 sessionData content verified)
+
+### Bug Fix (pre-existing)
+- **AccountBalanceCard.test.tsx** — Updated expected text from "Connect wallet to view balance" to "Authenticate to view balance" (matching component)
+
+### Design Decisions
+1. V2 is non-fatal: If Clearnode `submitAppState` for V2 fails, the bet is still accepted internally
+2. V2 allocations unchanged: No fund reallocation at V2, only sessionData enrichment
+3. Version tracking: Position's `appSessionVersion` updated after V2 success, so V3 uses correct next version regardless of V2 outcome
+4. Types duplicated across packages (not shared): Hub, frontend, simulator each have their own copy — small and stable
+
+### Test Results
+- **Hub:** 20 suites, 259 passed (was 244, +15 new: 6 session-data + 2 tracker + 4 bet + 3 oracle)
+- **Frontend:** 24 suites, 198 passed (was 197, +1 new useBet V1 test)
+- **Simulator:** 5 suites, 108 passed (was 106, +2 new: 1 pool + 1 engine)
+- **Dashboard:** 1 suite, 47 passed (unchanged)
+- **Total:** 612 passing tests
+
+---
+
+## SESSION_VERSION_UPDATED WebSocket Broadcast
+Date: 2026-02-06
+
+### Problem
+After a bet is accepted, the hub updates `appSessionVersion` from 1 to 2 via `updateAppSessionVersion()` in `bet.routes.ts`. However, no WebSocket broadcast notified the dashboard of this version change. The VERSION column stayed at 1 until resolution.
+
+### What was done
+1. **New `SESSION_VERSION_UPDATED` WS message type** — Added to hub `types.ts`, dashboard `types.ts`, and frontend `types.ts` (type parity)
+2. **Hub broadcast** — After successful V2 `submitAppState`, broadcasts `{ type: 'SESSION_VERSION_UPDATED', appSessionId, version }` via `ctx.ws.broadcast()`
+3. **Dashboard handler** — `App.tsx` processes `SESSION_VERSION_UPDATED` to update the matching position's `appSessionVersion` in real-time
+4. **Dashboard formatter** — `formatWsMessage()` formats the new type for the event log
+5. **Column rename** — PositionsPanel column header changed from `v` (4-char) to `VERSION` (9-char) with matching data cell padding
+6. **Tests** — +2 hub tests (broadcast on success, no broadcast on failure), +1 dashboard formatter test
+
+### Test Results
+- **Hub:** 20 suites, 261 passed (+2 new SESSION_VERSION_UPDATED broadcast tests)
+- **Dashboard:** 1 suite, 48 passed (+1 new formatter test)
+- **Frontend:** 24 suites, 198 passed (unchanged, type parity only)
+
+---
+
+## Fix: Missing V3 SESSION_VERSION_UPDATED Broadcast for Losers (oracle.routes.ts)
+Date: 2026-02-06
+
+### Problem
+The `SESSION_VERSION_UPDATED` broadcast was only implemented for the V1→V2 transition in `bet.routes.ts`. When the market resolves, losers go through `submitAppState` with V3 data in `oracle.routes.ts`, but no `SESSION_VERSION_UPDATED` was broadcast and `updateAppSessionVersion` was never called on the tracker. The dashboard never learned about V2→V3 for losers.
+
+### What was done
+1. **V3 version update + broadcast for losers** — After successful V3 `submitAppState` in the loser settlement loop (`oracle.routes.ts`), added `positionTracker.updateAppSessionVersion()` and `ws.broadcast({ type: 'SESSION_VERSION_UPDATED' })`, mirroring the V2 pattern in `bet.routes.ts`. Placed inside the try block so it only fires if `submitAppState` succeeds.
+2. **+2 tests** — `broadcasts SESSION_VERSION_UPDATED for losers after V3 submitAppState` and `does not broadcast SESSION_VERSION_UPDATED for losers when V3 submitAppState fails`
+
+### Notes
+- Winners don't get V3 `submitAppState` — they go straight to `closeSession` + `transfer`. No version increment for winners (by design).
+- Dashboard `App.tsx` already handles `SESSION_VERSION_UPDATED` generically, so no frontend changes needed.
+
+### Test Results
+- **Hub:** 20 suites, 263 passed (+2 new V3 broadcast tests)

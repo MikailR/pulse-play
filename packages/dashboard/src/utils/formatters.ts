@@ -67,6 +67,8 @@ export function formatWsMessage(msg: WsMessage): string {
       return `${msg.count} clients`;
     case 'STATE_SYNC':
       return `Synced (${msg.positions.length} positions)`;
+    case 'SESSION_VERSION_UPDATED':
+      return `${truncateAddress(msg.appSessionId)} → v${msg.version}`;
     case 'SESSION_SETTLED':
       return `${truncateAddress(msg.address)} session ${truncateAddress(msg.appSessionId)} settled`;
     default:
@@ -158,7 +160,7 @@ export function formatShares(shares: number): string {
  * Formats state channel version compactly
  */
 export function formatVersion(version: number): string {
-  return `v${version}`;
+  return `${version}`;
 }
 
 /**

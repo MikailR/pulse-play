@@ -33,9 +33,9 @@ export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive
       flexGrow={1}
     >
       {/* Title */}
-      <Box justifyContent="center" gap={1}>
+      <Box justifyContent="center" gap={1} marginBottom={1}>
         <Text bold color="yellow">
-          ⚡ APP SESSIONS ({positions.length})
+           APP SESSIONS ({positions.length})
         </Text>
         {showIndicator && (
           <Text color="gray" dimColor>
@@ -51,7 +51,7 @@ export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive
           {'BETTOR'.padEnd(14)}
           {'BET'.padEnd(6)}
           {'ALLOC'.padEnd(8)}
-          {'v'.padEnd(4)}
+          {'VERSION'.padEnd(9)}
           {'STATUS'}
         </Text>
       </Box>
@@ -77,8 +77,8 @@ export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive
             <Text color="green">
               {formatDollars(pos.costPaid).padStart(6).padEnd(8)}
             </Text>
-            <Text color="gray" dimColor>
-              {formatVersion(pos.appSessionVersion).padEnd(4)}
+            <Text color="white" dimColor>
+              {formatVersion(pos.appSessionVersion).padStart(4).padEnd(9)}
             </Text>
             <Text color={getSessionStatusColor(pos.sessionStatus ?? 'open')} bold>
               {formatStatusBadge(pos.sessionStatus ?? 'open')}

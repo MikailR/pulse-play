@@ -197,13 +197,29 @@ describe('PositionTracker', () => {
       expect(tracker.getPositionsByMarket(MARKET_ID)[0].sessionStatus).toBe('open');
     });
 
-    test('13. updates correct position among many', () => {
+    test('13. updates correct position among many (status)', () => {
       tracker.addPosition(makePosition({ address: '0xAAA', appSessionId: 's1' }));
       tracker.addPosition(makePosition({ address: '0xBBB', appSessionId: 's2' }));
       tracker.updateSessionStatus('s2', 'settled');
       const positions = tracker.getPositionsByMarket(MARKET_ID);
       expect(positions[0].sessionStatus).toBe('open');
       expect(positions[1].sessionStatus).toBe('settled');
+    });
+  });
+
+  // ─── App session version ────────────────────────────────────
+
+  describe('updateAppSessionVersion', () => {
+    test('14. updates version on existing position', () => {
+      tracker.addPosition(makePosition({ appSessionId: 's1', appSessionVersion: 1 }));
+      tracker.updateAppSessionVersion('s1', 2);
+      expect(tracker.getPositionsByMarket(MARKET_ID)[0].appSessionVersion).toBe(2);
+    });
+
+    test('15. no-op when session ID not found', () => {
+      tracker.addPosition(makePosition({ appSessionId: 's1', appSessionVersion: 1 }));
+      tracker.updateAppSessionVersion('unknown', 5);
+      expect(tracker.getPositionsByMarket(MARKET_ID)[0].appSessionVersion).toBe(1);
     });
   });
 });

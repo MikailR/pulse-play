@@ -211,4 +211,86 @@ describe('Bet Routes', () => {
     await postBet({ marketId, outcome: 'BALL', amount: 10 });
     expect(closeSession).not.toHaveBeenCalled();
   });
+
+  // ── V2 sessionData on bet acceptance ──
+
+  test('calls submitAppState with V2 sessionData after accepted bet', async () => {
+    openMarket();
+    const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
+    submitAppState.mockClear();
+
+    await postBet(validBet());
+
+    expect(submitAppState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appSessionId: 'sess1',
+        intent: 'operate',
+        version: 2, // appSessionVersion(1) + 1
+        sessionData: expect.stringContaining('"v":2'),
+      }),
+    );
+
+    // Verify sessionData content
+    const callArgs = submitAppState.mock.calls[0][0];
+    const sessionData = JSON.parse(callArgs.sessionData);
+    expect(sessionData.v).toBe(2);
+    expect(sessionData.marketId).toBe(marketId);
+    expect(sessionData.outcome).toBe('BALL');
+    expect(sessionData.amount).toBe(10);
+    expect(sessionData.shares).toBeGreaterThan(0);
+    expect(sessionData.effectivePricePerShare).toBeGreaterThan(0);
+    expect(sessionData.preBetOdds).toEqual({ ball: 0.5, strike: 0.5 });
+    expect(sessionData.postBetOdds.ball).toBeGreaterThan(0.5);
+  });
+
+  test('V2 submitAppState failure is non-fatal (response still accepted)', async () => {
+    openMarket();
+    (ctx.clearnodeClient.submitAppState as jest.Mock).mockRejectedValueOnce(new Error('Clearnode down'));
+
+    const res = await postBet(validBet());
+    expect(res.json().accepted).toBe(true);
+  });
+
+  test('appSessionVersion updated to 2 on successful V2 submitAppState', async () => {
+    openMarket();
+    await postBet(validBet());
+
+    const pos = ctx.positionTracker.getPositionsByUser('0xAlice')[0];
+    expect(pos.appSessionVersion).toBe(2);
+  });
+
+  test('appSessionVersion stays at 1 when V2 submitAppState fails', async () => {
+    openMarket();
+    (ctx.clearnodeClient.submitAppState as jest.Mock).mockRejectedValueOnce(new Error('fail'));
+    await postBet(validBet());
+
+    const pos = ctx.positionTracker.getPositionsByUser('0xAlice')[0];
+    expect(pos.appSessionVersion).toBe(1);
+  });
+
+  test('broadcasts SESSION_VERSION_UPDATED after successful V2 submitAppState', async () => {
+    openMarket();
+    const broadcastSpy = jest.spyOn(ctx.ws, 'broadcast');
+    await postBet(validBet());
+
+    expect(broadcastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'SESSION_VERSION_UPDATED',
+        appSessionId: 'sess1',
+        version: 2,
+      }),
+    );
+  });
+
+  test('does not broadcast SESSION_VERSION_UPDATED when V2 submitAppState fails', async () => {
+    openMarket();
+    (ctx.clearnodeClient.submitAppState as jest.Mock).mockRejectedValueOnce(new Error('fail'));
+    const broadcastSpy = jest.spyOn(ctx.ws, 'broadcast');
+    await postBet(validBet());
+
+    const versionBroadcasts = broadcastSpy.mock.calls.filter(
+      ([msg]) => msg.type === 'SESSION_VERSION_UPDATED',
+    );
+    expect(versionBroadcasts).toHaveLength(0);
+  });
 });

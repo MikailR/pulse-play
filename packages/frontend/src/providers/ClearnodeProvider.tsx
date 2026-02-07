@@ -14,6 +14,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import { useWalletClient } from 'wagmi';
 import {
+  createGetConfigMessageV2,
   createGetLedgerBalancesMessage,
   parseGetLedgerBalancesResponse,
   type MessageSigner,
@@ -77,6 +78,9 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
   const allowanceAmountRef = useRef<number>(allowanceAmount);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const signerRef = useRef<MessageSigner | null>(null);
+  const expiresAtRef = useRef<number>(0);
+  const connectPromiseRef = useRef<Promise<void> | null>(null);
 
   // Keep the ref in sync so authenticate() reads the latest value without depending on it
   useEffect(() => {
@@ -84,23 +88,6 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
   }, [allowanceAmount]);
 
   const isSessionValid = signer !== null && expiresAt > Date.now();
-
-  // Fetch balance from Clearnode
-  const refreshBalance = useCallback(async () => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !signer) return;
-
-    try {
-      const msg = await createGetLedgerBalancesMessage(signer);
-      const raw = await sendAndWaitBrowser(wsRef.current, msg, 'get_ledger_balances');
-      const response = parseGetLedgerBalancesResponse(raw);
-      const entry = response.params.ledgerBalances.find(
-        (b: { asset: string; amount: string }) => b.asset === 'ytest.usd',
-      );
-      setBalance(entry ? entry.amount : '0');
-    } catch {
-      // Balance fetch failure is non-fatal
-    }
-  }, [signer]);
 
   // Core authentication function
   const authenticate = useCallback(async () => {
@@ -113,7 +100,7 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
     } catch (err) {
       setStatus('error');
       setError(err instanceof Error ? err.message : 'WebSocket connection failed');
-      return;
+      throw err;
     }
 
     wsRef.current = newWs;
@@ -142,8 +129,24 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       });
       // setSigner(result.signer);
       setSigner(() => result.signer);
+      signerRef.current = result.signer;
       setExpiresAt(result.expiresAt);
+      expiresAtRef.current = result.expiresAt;
       setStatus('connected');
+
+      // Detect server-side drops — signer stays valid for light reconnect
+      newWs.addEventListener('close', () => {
+        if (wsRef.current === newWs) {
+          setWs(null);
+          setStatus('disconnected');
+        }
+      });
+      newWs.addEventListener('error', () => {
+        if (wsRef.current === newWs) {
+          setWs(null);
+          setStatus('disconnected');
+        }
+      });
 
       // Fetch balance after successful auth
       try {
@@ -161,8 +164,11 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       newWs.close();
       wsRef.current = null;
       setWs(null);
+      signerRef.current = null;
+      expiresAtRef.current = 0;
       setStatus('error');
       setError(err instanceof Error ? err.message : 'Authentication failed');
+      throw err;
     }
   }, [url, mode, wagmiWalletClient]);
 
@@ -175,10 +181,16 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       setWs(null);
     }
     setSigner(null);
+    signerRef.current = null;
     setBalance(null);
     setExpiresAt(0);
+    expiresAtRef.current = 0;
 
-    await authenticate();
+    try {
+      await authenticate();
+    } catch {
+      // Error already captured in state by authenticate()
+    }
   }, [authenticate]);
 
   // Disconnect
@@ -189,47 +201,95 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
     }
     setWs(null);
     setSigner(null);
+    signerRef.current = null;
     setBalance(null);
     setExpiresAt(0);
+    expiresAtRef.current = 0;
     setStatus('disconnected');
     setError(null);
   }, []);
 
+  // Ensure connection is alive before calling a method — always does full auth
+  const ensureConnected = useCallback(async () => {
+    if (wsRef.current?.readyState === WebSocket.OPEN && signerRef.current) return;
+    if (connectPromiseRef.current) return connectPromiseRef.current;
+
+    connectPromiseRef.current = authenticate().finally(() => {
+      connectPromiseRef.current = null;
+    });
+    return connectPromiseRef.current;
+  }, [authenticate]);
+
+  // Fetch balance from Clearnode (auto-reconnects if WS is dead)
+  const refreshBalance = useCallback(async () => {
+    try {
+      await ensureConnected();
+    } catch {
+      return; // Reconnect failed — non-fatal
+    }
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !signerRef.current) return;
+
+    try {
+      const msg = await createGetLedgerBalancesMessage(signerRef.current);
+      const raw = await sendAndWaitBrowser(wsRef.current, msg, 'get_ledger_balances');
+      const response = parseGetLedgerBalancesResponse(raw);
+      const entry = response.params.ledgerBalances.find(
+        (b: { asset: string; amount: string }) => b.asset === 'ytest.usd',
+      );
+      setBalance(entry ? entry.amount : '0');
+    } catch {
+      // Balance fetch failure is non-fatal
+    }
+  }, [ensureConnected]);
+
   // ── Clearnode RPC method wrappers ──
 
   const createAppSessionCb = useCallback(
-    (params: Parameters<ClearnodeContextValue['createAppSession']>[0]) =>
-      createAppSessionFn(wsRef.current, signer, address as `0x${string}`, params),
-    [signer, address],
+    async (params: Parameters<ClearnodeContextValue['createAppSession']>[0]) => {
+      await ensureConnected();
+      return createAppSessionFn(wsRef.current, signerRef.current, address as `0x${string}`, params);
+    },
+    [ensureConnected, address],
   );
 
   const closeAppSessionCb = useCallback(
-    (params: Parameters<ClearnodeContextValue['closeAppSession']>[0]) =>
-      closeAppSessionFn(wsRef.current, signer, params),
-    [signer],
+    async (params: Parameters<ClearnodeContextValue['closeAppSession']>[0]) => {
+      await ensureConnected();
+      return closeAppSessionFn(wsRef.current, signerRef.current, params);
+    },
+    [ensureConnected],
   );
 
   const submitAppStateCb = useCallback(
-    (params: Parameters<ClearnodeContextValue['submitAppState']>[0]) =>
-      submitAppStateFn(wsRef.current, signer, params),
-    [signer],
+    async (params: Parameters<ClearnodeContextValue['submitAppState']>[0]) => {
+      await ensureConnected();
+      return submitAppStateFn(wsRef.current, signerRef.current, params);
+    },
+    [ensureConnected],
   );
 
   const transferCb = useCallback(
-    (params: Parameters<ClearnodeContextValue['transfer']>[0]) =>
-      transferFn(wsRef.current, signer, params),
-    [signer],
+    async (params: Parameters<ClearnodeContextValue['transfer']>[0]) => {
+      await ensureConnected();
+      return transferFn(wsRef.current, signerRef.current, params);
+    },
+    [ensureConnected],
   );
 
   const getAppSessionsCb = useCallback(
-    (filterStatus?: string) =>
-      getAppSessionsFn(wsRef.current, signer, address as `0x${string}`, filterStatus),
-    [signer, address],
+    async (filterStatus?: string) => {
+      await ensureConnected();
+      return getAppSessionsFn(wsRef.current, signerRef.current, address as `0x${string}`, filterStatus);
+    },
+    [ensureConnected, address],
   );
 
   const getConfigCb = useCallback(
-    () => getConfigFn(wsRef.current),
-    [],
+    async () => {
+      await ensureConnected();
+      return getConfigFn(wsRef.current);
+    },
+    [ensureConnected],
   );
 
   // Auto-authenticate when wallet connects
@@ -242,8 +302,10 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       }
       setWs(null);
       setSigner(null);
+      signerRef.current = null;
       setBalance(null);
       setExpiresAt(0);
+      expiresAtRef.current = 0;
       setStatus('disconnected');
       setError(null);
       return;
@@ -256,7 +318,11 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
 
     const connect = async () => {
       if (intentionalClose) return;
-      await authenticate();
+      try {
+        await authenticate();
+      } catch {
+        // Error already captured in state by authenticate()
+      }
     };
 
     connect();
@@ -269,6 +335,20 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       }
     };
   }, [walletConnected, address, mode, wagmiWalletClient, authenticate]);
+
+  // Keepalive — prevent Clearnode idle timeout by sending a lightweight message every 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(createGetConfigMessageV2());
+        } catch {
+          // Keepalive send failure is non-fatal
+        }
+      }
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const value: ClearnodeContextValue = {
     status,

@@ -90,14 +90,17 @@ describe('useBet', () => {
       response = await result.current.bet('BALL', 10);
     });
 
-    // Verify createAppSession was called with correct params
-    expect(mockCreateAppSession).toHaveBeenCalledWith({
-      counterparty: '0xMM',
-      allocations: [
-        { asset: 'ytest.usd', amount: '10000000', participant: '0x123' },
-        { asset: 'ytest.usd', amount: '0', participant: '0xMM' },
-      ],
-    });
+    // Verify createAppSession was called with correct params (including V1 sessionData)
+    expect(mockCreateAppSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        counterparty: '0xMM',
+        allocations: [
+          { asset: 'ytest.usd', amount: '10000000', participant: '0x123' },
+          { asset: 'ytest.usd', amount: '0', participant: '0xMM' },
+        ],
+        sessionData: expect.stringContaining('"v":1'),
+      }),
+    );
 
     // Verify placeBet was called with the real session ID
     expect(mockPlaceBet).toHaveBeenCalledWith({
@@ -268,15 +271,48 @@ describe('useBet', () => {
     expect(mockCreateAppSession).not.toHaveBeenCalled();
   });
 
-  it('returns error when Clearnode not connected', async () => {
+  it('passes V1 sessionData containing marketId, outcome, amount to createAppSession', async () => {
+    mockPlaceBet.mockResolvedValueOnce({
+      accepted: true,
+      shares: 9.5,
+      newPriceBall: 0.55,
+      newPriceStrike: 0.45,
+    });
+
+    const { result } = renderHook(() =>
+      useBet({ address: '0x123', marketId: 'market-1' })
+    );
+
+    await act(async () => {
+      await result.current.bet('BALL', 10);
+    });
+
+    const callArgs = mockCreateAppSession.mock.calls[0][0];
+    expect(callArgs.sessionData).toBeDefined();
+    const sessionData = JSON.parse(callArgs.sessionData);
+    expect(sessionData.v).toBe(1);
+    expect(sessionData.marketId).toBe('market-1');
+    expect(sessionData.outcome).toBe('BALL');
+    expect(sessionData.amount).toBe(10);
+    expect(sessionData.timestamp).toEqual(expect.any(Number));
+  });
+
+  it('calls createAppSession even when status is disconnected (transparent reconnection)', async () => {
     setupClearnodeMock({ status: 'disconnected' });
 
-    const onError = jest.fn();
+    mockPlaceBet.mockResolvedValueOnce({
+      accepted: true,
+      shares: 9.5,
+      newPriceBall: 0.55,
+      newPriceStrike: 0.45,
+    });
+
+    const onSuccess = jest.fn();
     const { result } = renderHook(() =>
       useBet({
         address: '0x123',
         marketId: 'market-1',
-        onError,
+        onSuccess,
       })
     );
 
@@ -284,9 +320,11 @@ describe('useBet', () => {
       await result.current.bet('BALL', 10);
     });
 
-    expect(result.current.error).toBe('Clearnode not connected');
-    expect(onError).toHaveBeenCalled();
-    expect(mockCreateAppSession).not.toHaveBeenCalled();
+    // createAppSession should still be called — it handles reconnection internally
+    expect(mockCreateAppSession).toHaveBeenCalled();
+    expect(mockPlaceBet).toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
   });
 
   it('sets isLoading during request', async () => {

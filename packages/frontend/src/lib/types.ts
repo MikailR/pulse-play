@@ -238,6 +238,12 @@ export interface WsSessionSettled {
   address: string;
 }
 
+export interface WsSessionVersionUpdated {
+  type: 'SESSION_VERSION_UPDATED';
+  appSessionId: string;
+  version: number;
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -246,7 +252,8 @@ export type WsMessage =
   | WsPositionAdded
   | WsConnectionCount
   | WsStateSync
-  | WsSessionSettled;
+  | WsSessionSettled
+  | WsSessionVersionUpdated;
 
 // ── Market Maker DTOs ──
 

@@ -107,7 +107,7 @@ function ClearnodeConsumer() {
 }
 
 function ClearnodeConsumerWithActions() {
-  const { status, error, balance, allowanceAmount, setAllowanceAmount, reconnect, disconnect } = useClearnode();
+  const { status, error, balance, allowanceAmount, setAllowanceAmount, reconnect, disconnect, refreshBalance } = useClearnode();
   return (
     <div>
       <span data-testid="status">{status}</span>
@@ -117,6 +117,7 @@ function ClearnodeConsumerWithActions() {
       <button data-testid="reconnect" onClick={() => reconnect()}>Reconnect</button>
       <button data-testid="disconnect" onClick={() => disconnect()}>Disconnect</button>
       <button data-testid="set-allowance-500" onClick={() => setAllowanceAmount(500)}>Set 500</button>
+      <button data-testid="refresh-balance" onClick={() => refreshBalance()}>Refresh</button>
     </div>
   );
 }
@@ -605,5 +606,296 @@ describe('ClearnodeProvider', () => {
       expect(screen.getByTestId('method-result')).toHaveTextContent('closed');
     });
     expect(mockCloseAppSession).toHaveBeenCalled();
+  });
+
+  // ── Auto-reconnection tests ──
+
+  it('reconnects with full auth when WS drops', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClearnodeMethodConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // Simulate dead WS — set readyState to CLOSED
+    const initialWs = mockOpenClearnodeWs.mock.results[0].value;
+    (await initialWs).readyState = WebSocket.CLOSED;
+
+    // Set up a fresh WS + auth for reconnect
+    const freshWs = createMockWs();
+    mockOpenClearnodeWs.mockResolvedValueOnce(freshWs);
+    mockAuthenticateBrowser.mockResolvedValueOnce({
+      signer: 'mock-signer-reconnected',
+      sessionAddress: '0xSESSION_RECONNECTED',
+      expiresAt: Date.now() + 3600_000,
+    });
+
+    // Call a method — should trigger full re-auth
+    await user.click(screen.getByTestId('call-getConfig'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('method-result')).toHaveTextContent('0xBROKER');
+    });
+
+    // Should have opened a new WS AND re-authenticated (initial + reconnect)
+    expect(mockOpenClearnodeWs).toHaveBeenCalledTimes(2);
+    expect(mockAuthenticateBrowser).toHaveBeenCalledTimes(2);
+  });
+
+  it('full re-auth when signer has expired', async () => {
+    // Set up auth to return a signer that expires immediately
+    mockAuthenticateBrowser.mockResolvedValueOnce({
+      signer: 'mock-signer',
+      sessionAddress: '0xSESSION',
+      expiresAt: Date.now() - 1000, // Already expired
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<ClearnodeMethodConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // Simulate dead WS
+    const initialWs = await mockOpenClearnodeWs.mock.results[0].value;
+    initialWs.readyState = WebSocket.CLOSED;
+
+    // Set up fresh WS + auth for full re-auth
+    const freshWs = createMockWs();
+    mockOpenClearnodeWs.mockResolvedValueOnce(freshWs);
+    mockAuthenticateBrowser.mockResolvedValueOnce({
+      signer: 'mock-signer-2',
+      sessionAddress: '0xSESSION2',
+      expiresAt: Date.now() + 3600_000,
+    });
+
+    // Call a method — should trigger full re-auth since signer expired
+    await user.click(screen.getByTestId('call-getConfig'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('method-result')).toHaveTextContent('0xBROKER');
+    });
+
+    // Should have called authenticateBrowser for full re-auth
+    expect(mockAuthenticateBrowser).toHaveBeenCalledTimes(2);
+  });
+
+  it('deduplicates concurrent reconnection attempts', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClearnodeMethodConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // Simulate dead WS
+    const initialWs = await mockOpenClearnodeWs.mock.results[0].value;
+    initialWs.readyState = WebSocket.CLOSED;
+
+    // Set up slow reconnect to ensure both calls overlap — openClearnodeWs hangs
+    let resolveWs: (ws: ReturnType<typeof createMockWs>) => void;
+    const wsPromise = new Promise<ReturnType<typeof createMockWs>>((r) => { resolveWs = r; });
+    mockOpenClearnodeWs.mockReturnValueOnce(wsPromise);
+
+    // Set up auth for the reconnect
+    mockAuthenticateBrowser.mockResolvedValueOnce({
+      signer: 'mock-signer-dedup',
+      sessionAddress: '0xSESSION_DEDUP',
+      expiresAt: Date.now() + 3600_000,
+    });
+
+    // Fire two methods concurrently against the dead WS
+    await user.click(screen.getByTestId('call-getConfig'));
+    await user.click(screen.getByTestId('call-getAppSessions'));
+
+    // Resolve the WS — both methods should share this one reconnect (full auth)
+    const freshWs = createMockWs();
+    resolveWs!(freshWs);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('method-result')).not.toHaveTextContent('none');
+    });
+
+    // Should have only opened one new WS (not two) and only one re-auth
+    expect(mockOpenClearnodeWs).toHaveBeenCalledTimes(2); // initial + 1 reconnect
+    expect(mockAuthenticateBrowser).toHaveBeenCalledTimes(2); // initial + 1 reconnect
+  });
+
+  it('status updates to disconnected when WS close event fires', async () => {
+    const mockWs = createMockWs();
+    mockOpenClearnodeWs.mockResolvedValue(mockWs);
+
+    // Capture addEventListener calls to invoke the handler later
+    const handlers: Record<string, (() => void)[]> = {};
+    mockWs.addEventListener.mockImplementation((event: string, handler: () => void) => {
+      if (!handlers[event]) handlers[event] = [];
+      handlers[event].push(handler);
+    });
+
+    renderWithProviders(<ClearnodeConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // Signer should be present
+    expect(screen.getByTestId('has-signer')).toHaveTextContent('yes');
+
+    // Simulate server dropping the connection
+    React.act(() => {
+      handlers['close']?.forEach((h) => h());
+    });
+
+    // Status should go to disconnected, but signer should remain (for light reconnect)
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('disconnected');
+    });
+    expect(screen.getByTestId('has-signer')).toHaveTextContent('yes');
+  });
+
+  it('method returns correct result after reconnect', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClearnodeMethodConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // Kill the WS
+    const initialWs = await mockOpenClearnodeWs.mock.results[0].value;
+    initialWs.readyState = WebSocket.CLOSED;
+
+    // Set up fresh WS + auth for reconnect
+    const freshWs = createMockWs();
+    mockOpenClearnodeWs.mockResolvedValueOnce(freshWs);
+    mockAuthenticateBrowser.mockResolvedValueOnce({
+      signer: 'mock-signer-reconnected',
+      sessionAddress: '0xSESSION_RECONNECTED',
+      expiresAt: Date.now() + 3600_000,
+    });
+
+    // Custom result for createAppSession
+    mockCreateAppSession.mockResolvedValueOnce({ appSessionId: '0xRECONNECTED', version: 1, status: 'open' });
+
+    await user.click(screen.getByTestId('call-createAppSession'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('method-result')).toHaveTextContent('created:0xRECONNECTED');
+    });
+  });
+
+  it('error propagates when reconnection fails', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClearnodeMethodConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // Kill the WS
+    const initialWs = await mockOpenClearnodeWs.mock.results[0].value;
+    initialWs.readyState = WebSocket.CLOSED;
+
+    // Make reconnect fail
+    mockOpenClearnodeWs.mockRejectedValueOnce(new Error('Network unreachable'));
+
+    await user.click(screen.getByTestId('call-getConfig'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('method-result')).toHaveTextContent('error:');
+    });
+  });
+
+  // ── refreshBalance auto-reconnect tests ──
+
+  it('refreshBalance auto-reconnects when WS is dead', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClearnodeConsumerWithActions />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+      expect(screen.getByTestId('balance')).toHaveTextContent('1000000');
+    });
+
+    // Simulate WS drop
+    const initialWs = await mockOpenClearnodeWs.mock.results[0].value;
+    initialWs.readyState = WebSocket.CLOSED;
+
+    // Set up fresh WS + auth for full reconnect
+    const freshWs = createMockWs();
+    mockOpenClearnodeWs.mockResolvedValueOnce(freshWs);
+    mockAuthenticateBrowser.mockResolvedValueOnce({
+      signer: 'mock-signer-refresh',
+      sessionAddress: '0xSESSION_REFRESH',
+      expiresAt: Date.now() + 3600_000,
+    });
+
+    // Set up updated balance response
+    mockSendAndWaitBrowser.mockResolvedValueOnce('{"res":[1,"get_ledger_balances",{}]}');
+
+    // Click refresh — should auto-reconnect (full auth) + fetch new balance
+    await user.click(screen.getByTestId('refresh-balance'));
+
+    await waitFor(() => {
+      // Should have opened a new WS (initial + 1 reconnect)
+      expect(mockOpenClearnodeWs).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('refreshBalance is non-fatal when reconnect fails', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClearnodeConsumerWithActions />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+      expect(screen.getByTestId('balance')).toHaveTextContent('1000000');
+    });
+
+    // Simulate WS drop
+    const initialWs = await mockOpenClearnodeWs.mock.results[0].value;
+    initialWs.readyState = WebSocket.CLOSED;
+
+    // Make reconnect fail
+    mockOpenClearnodeWs.mockRejectedValueOnce(new Error('Network unreachable'));
+
+    // Click refresh — should NOT crash
+    await user.click(screen.getByTestId('refresh-balance'));
+
+    // Wait a tick — no crash, balance preserved from initial fetch
+    await new Promise(r => setTimeout(r, 50));
+    expect(screen.getByTestId('balance')).toHaveTextContent('1000000');
+  });
+
+  // ── Keepalive tests ──
+
+  it('sends keepalive get_config message every 30 seconds', async () => {
+    jest.useFakeTimers();
+
+    const mockWs = createMockWs();
+    mockOpenClearnodeWs.mockResolvedValue(mockWs);
+
+    renderWithProviders(<ClearnodeConsumer />);
+
+    // Wait for auth to complete
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // Reset send mock to isolate keepalive calls from auth traffic
+    mockWs.send.mockClear();
+
+    // Advance 30s — should trigger one keepalive
+    jest.advanceTimersByTime(30_000);
+    expect(mockWs.send).toHaveBeenCalledTimes(1);
+    expect(mockWs.send).toHaveBeenCalledWith(expect.stringContaining('get_config'));
+
+    // Advance another 30s — second keepalive
+    mockWs.send.mockClear();
+    jest.advanceTimersByTime(30_000);
+    expect(mockWs.send).toHaveBeenCalledTimes(1);
+
+    jest.useRealTimers();
   });
 });

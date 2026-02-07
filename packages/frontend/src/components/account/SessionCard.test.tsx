@@ -141,4 +141,34 @@ describe('SessionCard', () => {
 
     expect(setAllowanceAmount).toHaveBeenCalled();
   });
+
+  it('shows Active badge when WS is disconnected but session is valid', () => {
+    mockUseClearnode.mockReturnValue(
+      defaultContext({
+        status: 'disconnected',
+        isSessionValid: true,
+        expiresAt: Date.now() + 3600_000,
+      }),
+    );
+
+    render(<SessionCard />);
+
+    expect(screen.getByTestId('session-status-badge')).toHaveTextContent('Active');
+    expect(screen.getByTestId('session-expiry')).toBeInTheDocument();
+  });
+
+  it('shows Expired badge when signer expires (not "Not Authenticated")', () => {
+    mockUseClearnode.mockReturnValue(
+      defaultContext({
+        status: 'disconnected',
+        isSessionValid: false,
+        expiresAt: Date.now() - 1000,
+      }),
+    );
+
+    render(<SessionCard />);
+
+    expect(screen.getByTestId('session-status-badge')).toHaveTextContent('Expired');
+    expect(screen.getByTestId('session-expiry')).toHaveTextContent('Expired');
+  });
 });

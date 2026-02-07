@@ -160,6 +160,15 @@ describe('formatWsMessage', () => {
     expect(formatWsMessage(msg)).toBe('0x1234..5678 BALL 10.50 $5.25');
   });
 
+  it('formats SESSION_VERSION_UPDATED messages', () => {
+    const msg: WsMessage = {
+      type: 'SESSION_VERSION_UPDATED',
+      appSessionId: '0xABCDEF1234567890ABCDEF1234567890ABCDEF12',
+      version: 2,
+    };
+    expect(formatWsMessage(msg)).toBe('0xABCD..EF12 → v2');
+  });
+
   it('formats SESSION_SETTLED messages', () => {
     const msg: WsMessage = {
       type: 'SESSION_SETTLED',

@@ -30,7 +30,7 @@ async function main() {
     url: process.env.CLEARNODE_URL ?? 'wss://clearnode.yellow.com/ws',
     mmPrivateKey: (process.env.MM_PRIVATE_KEY ?? '0x') as `0x${string}`,
     application: process.env.APPLICATION_NAME ?? '0x',
-    allowances: [],
+    allowances: [{ asset: 'ytest.usd', amount: String(100_000 * 1_000_000) }],
     faucetUrl: process.env.FAUCET_URL ?? 'https://faucet.yellow.com',
   });
 

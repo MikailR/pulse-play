@@ -1,0 +1,50 @@
+import type { Outcome } from '../lmsr/types.js';
+
+// ── V1: Bettor creates session — bet intent ──
+
+export interface SessionDataV1 {
+  v: 1;
+  marketId: string;
+  outcome: Outcome;
+  amount: number;
+  timestamp: number;
+}
+
+// ── V2: Hub accepts bet — LMSR confirmation ──
+
+export interface SessionDataV2 {
+  v: 2;
+  marketId: string;
+  outcome: Outcome;
+  amount: number;
+  shares: number;
+  effectivePricePerShare: number;
+  preBetOdds: { ball: number; strike: number };
+  postBetOdds: { ball: number; strike: number };
+  timestamp: number;
+}
+
+// ── V3: Hub settles — resolution ──
+
+export interface SessionDataV3 {
+  v: 3;
+  resolution: Outcome;
+  result: 'WIN' | 'LOSS';
+  payout: number;
+  profit: number;
+  shares: number;
+  costPaid: number;
+  timestamp: number;
+}
+
+export type SessionData = SessionDataV1 | SessionDataV2 | SessionDataV3;
+
+/** Encode session data for Clearnode transport. */
+export function encodeSessionData(data: SessionData): string {
+  return JSON.stringify(data);
+}
+
+/** Decode session data from Clearnode transport. */
+export function decodeSessionData(raw: string): SessionData {
+  return JSON.parse(raw) as SessionData;
+}

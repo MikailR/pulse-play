@@ -76,6 +76,13 @@ export class PositionTracker {
       .run();
   }
 
+  updateAppSessionVersion(appSessionId: string, version: number): void {
+    this.db.update(positions)
+      .set({ appSessionVersion: version })
+      .where(eq(positions.appSessionId, appSessionId))
+      .run();
+  }
+
   getPositionsByMarket(marketId: string): Position[] {
     return this.db.select().from(positions)
       .where(eq(positions.marketId, marketId))

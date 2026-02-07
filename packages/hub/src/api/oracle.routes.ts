@@ -6,6 +6,7 @@ import { getPrices } from '../modules/lmsr/engine.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
 import { eq } from 'drizzle-orm';
 import { marketCategories } from '../db/schema.js';
+import { encodeSessionData, type SessionDataV3 } from '../modules/clearnode/session-data.js';
 
 export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): void {
 
@@ -154,14 +155,26 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     // ── Settle losers first (MM needs funds before paying winners) ──
     for (const loser of result.losers) {
-      try {
-        const pos = positionMap.get(loser.appSessionId);
-        const version = pos ? pos.appSessionVersion + 1 : 2;
-        const lossAmount = toMicroUnits(loser.loss);
-        const sessionId = loser.appSessionId as `0x${string}`;
-        const loserAddr = loser.address as `0x${string}`;
-        const mm = mmAddress as `0x${string}`;
+      const pos = positionMap.get(loser.appSessionId);
+      const version = pos ? pos.appSessionVersion + 1 : 2;
+      const lossAmount = toMicroUnits(loser.loss);
+      const sessionId = loser.appSessionId as `0x${string}`;
+      const loserAddr = loser.address as `0x${string}`;
+      const mm = mmAddress as `0x${string}`;
 
+      const v3Data: SessionDataV3 = {
+        v: 3,
+        resolution: outcome as Outcome,
+        result: 'LOSS',
+        payout: 0,
+        profit: -loser.loss,
+        shares: pos ? pos.shares : 0,
+        costPaid: pos ? pos.costPaid : 0,
+        timestamp: Date.now(),
+      };
+      const v3SessionData = encodeSessionData(v3Data);
+
+      try {
         // Update state: reallocate user funds to MM
         await ctx.clearnodeClient.submitAppState({
           appSessionId: sessionId,
@@ -171,8 +184,15 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
             { participant: loserAddr, asset: ASSET, amount: '0' },
             { participant: mm, asset: ASSET, amount: lossAmount },
           ],
+          sessionData: v3SessionData,
         });
         ctx.log.resolutionStateUpdate(loser.address, loser.appSessionId, version);
+        ctx.positionTracker.updateAppSessionVersion(loser.appSessionId, version);
+        ctx.ws.broadcast({
+          type: 'SESSION_VERSION_UPDATED',
+          appSessionId: loser.appSessionId,
+          version,
+        });
 
         // Close the session
         await ctx.clearnodeClient.closeSession({
@@ -181,6 +201,7 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
             { participant: loserAddr, asset: ASSET, amount: '0' },
             { participant: mm, asset: ASSET, amount: lossAmount },
           ],
+          sessionData: v3SessionData,
         });
         ctx.log.resolutionSessionClosed(loser.address, loser.appSessionId);
       } catch (err) {
@@ -207,35 +228,52 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     // ── Settle winners ──
     for (const winner of result.winners) {
-      try {
-        const pos = positionMap.get(winner.appSessionId);
-        const costPaid = pos ? pos.costPaid : 0;
-        const sessionId = winner.appSessionId as `0x${string}`;
-        const winnerAddr = winner.address as `0x${string}`;
-        const mm = mmAddress as `0x${string}`;
+      const pos = positionMap.get(winner.appSessionId);
+      const costPaid = pos ? pos.costPaid : 0;
+      const sessionId = winner.appSessionId as `0x${string}`;
+      const winnerAddr = winner.address as `0x${string}`;
+      const mm = mmAddress as `0x${string}`;
 
-        // Close session: return user's original funds
+      const v3Data: SessionDataV3 = {
+        v: 3,
+        resolution: outcome as Outcome,
+        result: 'WIN',
+        payout: winner.payout,
+        profit: winner.payout - costPaid,
+        shares: pos ? pos.shares : 0,
+        costPaid,
+        timestamp: Date.now(),
+      };
+      const v3SessionData = encodeSessionData(v3Data);
+
+      // Close session: return user's original funds
+      try {
         await ctx.clearnodeClient.closeSession({
           appSessionId: sessionId,
           allocations: [
             { participant: winnerAddr, asset: ASSET, amount: toMicroUnits(costPaid) },
             { participant: mm, asset: ASSET, amount: '0' },
           ],
+          sessionData: v3SessionData,
         });
         ctx.log.resolutionSessionClosed(winner.address, winner.appSessionId);
+      } catch (err) {
+        ctx.log.error(`resolution-winner-closeSession-${winner.address}`, err);
+      }
 
-        // Transfer profit (payout - costPaid) from MM to winner
-        const profit = winner.payout - costPaid;
-        if (profit > 0) {
+      // Transfer profit (payout - costPaid) from MM to winner
+      const profit = winner.payout - costPaid;
+      if (profit > 0) {
+        try {
           await ctx.clearnodeClient.transfer({
             destination: winnerAddr,
             asset: ASSET,
             amount: toMicroUnits(profit),
           });
           ctx.log.resolutionTransfer(winner.address, profit);
+        } catch (err) {
+          ctx.log.error(`resolution-winner-transfer-${winner.address}`, err);
         }
-      } catch (err) {
-        ctx.log.error(`resolution-winner-${winner.address}`, err);
       }
 
       // Always update status + notify (outside try/catch so winners are settled even if Clearnode fails)
