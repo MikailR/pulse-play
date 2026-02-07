@@ -2,28 +2,39 @@
 
 import { usePositions } from '@/hooks/usePositions';
 import { useWallet } from '@/providers/WagmiProvider';
-import { useMarket } from '@/providers/MarketProvider';
+import { useSelectedMarket } from '@/providers/SelectedMarketProvider';
 import type { Position } from '@/lib/types';
+
+const OUTCOME_COLORS = [
+  { border: 'border-blue-500/30', text: 'text-blue-400' },
+  { border: 'border-red-500/30', text: 'text-red-400' },
+  { border: 'border-green-500/30', text: 'text-green-400' },
+  { border: 'border-amber-500/30', text: 'text-amber-400' },
+  { border: 'border-purple-500/30', text: 'text-purple-400' },
+];
+
+function getOutcomeStyle(outcome: string, outcomes: string[]) {
+  const index = outcomes.indexOf(outcome);
+  if (index >= 0) return OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+  // fallback for unknown outcomes
+  return { border: 'border-gray-500/30', text: 'text-gray-400' };
+}
 
 interface PositionListProps {
   className?: string;
 }
 
-function PositionCard({ position }: { position: Position }) {
+function PositionCard({ position, outcomes }: { position: Position; outcomes: string[] }) {
+  const style = getOutcomeStyle(position.outcome, outcomes);
+
   return (
     <div
-      className={`bg-gray-700/50 rounded-lg p-4 border ${
-        position.outcome === 'BALL'
-          ? 'border-blue-500/30'
-          : 'border-red-500/30'
-      }`}
+      className={`bg-gray-700/50 rounded-lg p-4 border ${style.border}`}
       data-testid={`position-${position.marketId}`}
     >
       <div className="flex justify-between items-center mb-2">
         <span
-          className={`text-sm font-medium ${
-            position.outcome === 'BALL' ? 'text-blue-400' : 'text-red-400'
-          }`}
+          className={`text-sm font-medium ${style.text}`}
           data-testid="position-outcome"
         >
           {position.outcome}
@@ -52,7 +63,7 @@ function PositionCard({ position }: { position: Position }) {
 
 export function PositionList({ className = '' }: PositionListProps) {
   const { address } = useWallet();
-  const { market } = useMarket();
+  const { market, outcomes } = useSelectedMarket();
   const { positions, isLoading, error } = usePositions({
     address,
     marketId: market?.id,
@@ -105,7 +116,7 @@ export function PositionList({ className = '' }: PositionListProps) {
       ) : (
         <div className="space-y-3" data-testid="positions-container">
           {positions.map((position, index) => (
-            <PositionCard key={`${position.marketId}-${index}`} position={position} />
+            <PositionCard key={`${position.marketId}-${index}`} position={position} outcomes={outcomes} />
           ))}
         </div>
       )}

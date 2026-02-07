@@ -1164,54 +1164,143 @@ The Market Maker needs its own wallet/identity:
 
 ## 5. Data Models
 
-### 5.1 Market
+> **Note:** All data models are persisted in SQLite via Drizzle ORM. The database schema is defined
+> in `packages/hub/src/db/schema.ts`. In-memory SQLite (`:memory:`) is used for tests.
+
+### 5.1 Sport
+
+```typescript
+interface Sport {
+  id: string;                              // Slug: 'baseball', 'basketball', 'soccer'
+  name: string;                            // Display: 'Baseball'
+  description: string | null;
+  createdAt: number;                       // Timestamp (ms)
+}
+```
+
+### 5.2 Market Category
+
+Each sport has one or more market categories defining binary outcome labels.
+
+```typescript
+interface MarketCategory {
+  id: string;                              // Slug: 'pitching', 'free_throw'
+  sportId: string;                         // FK → Sport
+  name: string;                            // Display: 'Pitching'
+  outcomeA: string;                        // e.g. 'BALL', 'MAKE', 'GOAL'
+  outcomeB: string;                        // e.g. 'STRIKE', 'MISS', 'SAVE'
+  description: string | null;
+  createdAt: number;
+}
+```
+
+Seeded defaults:
+| Sport | Category | Outcome A | Outcome B |
+|-------|----------|-----------|-----------|
+| Baseball | Pitching | BALL | STRIKE |
+| Baseball | Batting | HIT | OUT |
+| Basketball | Free Throw | MAKE | MISS |
+| Basketball | Three Pointer | MAKE | MISS |
+| Soccer | Penalty | GOAL | SAVE |
+
+### 5.3 Game
+
+```typescript
+interface Game {
+  id: string;                              // e.g. 'nyy-bos-20260205'
+  sportId: string;                         // FK → Sport
+  homeTeam: string;
+  awayTeam: string;
+  status: GameStatus;                      // SCHEDULED → ACTIVE → COMPLETED
+  startedAt: number | null;
+  completedAt: number | null;
+  metadata: string | null;                 // JSON blob for sport-specific state
+  createdAt: number;
+}
+
+type GameStatus = 'SCHEDULED' | 'ACTIVE' | 'COMPLETED';
+```
+
+### 5.4 Market
+
+Markets belong to a game + category stream. IDs auto-generate as `{gameId}-{categoryId}-{sequenceNum}`.
 
 ```typescript
 interface Market {
-  id: string;                              // Unique market identifier
+  id: string;                              // Auto-generated: 'nyy-bos-pitching-42'
+  gameId: string;                          // FK → Game
+  categoryId: string;                      // FK → MarketCategory
+  sequenceNum: number;                     // Auto-incremented per game+category
   status: MarketStatus;                    // Current lifecycle status
-  qBall: number;                           // LMSR: Ball shares outstanding
-  qStrike: number;                         // LMSR: Strike shares outstanding
+  qBall: number;                           // LMSR: outcome A shares outstanding
+  qStrike: number;                         // LMSR: outcome B shares outstanding
   b: number;                               // LMSR: Liquidity parameter
-  outcome: 'BALL' | 'STRIKE' | null;       // Resolved outcome
-  createdAt: number;                       // Timestamp
-  openedAt: number | null;                 // When betting opened
-  closedAt: number | null;                 // When betting closed
-  resolvedAt: number | null;               // When outcome resolved
+  outcome: string | null;                  // Resolved outcome (e.g. 'BALL', 'MAKE')
+  createdAt: number;
+  openedAt: number | null;
+  closedAt: number | null;
+  resolvedAt: number | null;
 }
 
 type MarketStatus = 'PENDING' | 'OPEN' | 'CLOSED' | 'RESOLVED';
 ```
 
-### 5.2 Position
+> **Design note:** `qBall`/`qStrike` field names are kept for backward compatibility.
+> They map to `q_a`/`q_b` DB columns and represent outcome A / outcome B generically.
+
+### 5.5 Position
 
 ```typescript
 interface Position {
   address: string;                         // User wallet address
-  marketId: string;                        // Associated market
-  outcome: 'BALL' | 'STRIKE';              // Bet outcome
+  marketId: string;                        // FK → Market
+  outcome: string;                         // Bet outcome (e.g. 'BALL', 'MAKE')
   shares: number;                          // Shares owned
   costPaid: number;                        // Amount paid for shares
   appSessionId: string;                    // Clearnode app session
+  appSessionVersion: number;               // Session version
+  sessionStatus: SessionStatus;            // 'open' | 'settling' | 'settled'
   timestamp: number;                       // When bet was placed
 }
 ```
 
-### 5.3 Game State
+### 5.6 User Stats
 
 ```typescript
-interface GameState {
-  active: boolean;                         // Is game in progress?
-  homeTeam: string;                        // Home team name
-  awayTeam: string;                        // Away team name
-  inning: number;                          // Current inning
-  balls: number;                           // Ball count
-  strikes: number;                         // Strike count
-  outs: number;                            // Out count
+interface UserStats {
+  address: string;                         // Wallet address (PK)
+  totalBets: number;
+  totalWins: number;
+  totalLosses: number;
+  totalWagered: number;
+  totalPayout: number;
+  netPnl: number;                          // payout - wagered
+  firstSeenAt: number;
+  lastActiveAt: number;
 }
 ```
 
-### 5.4 LP Share
+### 5.7 Settlement (Audit Trail)
+
+When a market resolves, positions are archived to the settlements table.
+
+```typescript
+interface Settlement {
+  id: number;
+  marketId: string;
+  address: string;
+  outcome: string;                         // What the user bet on
+  result: 'WIN' | 'LOSS';
+  shares: number;
+  costPaid: number;
+  payout: number;                          // shares for winners, 0 for losers
+  profit: number;                          // payout - costPaid
+  appSessionId: string;
+  settledAt: number;
+}
+```
+
+### 5.8 LP Share
 
 ```typescript
 interface LPShare {
@@ -1386,13 +1475,19 @@ Set game active/inactive.
 
 **POST /api/oracle/market/open**
 
-Open betting window.
+Open betting window for a specific game + category stream.
 
 ```typescript
+// Request
+{
+  gameId: string;
+  categoryId: string;
+}
+
 // Response
 {
   success: true;
-  marketId: string;
+  marketId: string;    // Auto-generated: '{gameId}-{categoryId}-{seqNum}'
 }
 ```
 
@@ -1401,6 +1496,12 @@ Open betting window.
 Close betting window.
 
 ```typescript
+// Request
+{
+  gameId?: string;     // Optional: identifies stream
+  categoryId?: string;
+}
+
 // Response
 {
   success: true;
@@ -1410,28 +1511,141 @@ Close betting window.
 
 **POST /api/oracle/outcome**
 
-Submit market outcome.
+Submit market outcome. Outcome is validated against the market category's outcomeA/outcomeB.
 
 ```typescript
 // Request
 {
-  outcome: 'BALL' | 'STRIKE';
+  outcome: string;     // Must match category's outcomeA or outcomeB
+  gameId?: string;
+  categoryId?: string;
 }
 
 // Response
 {
   success: true;
   marketId: string;
-  outcome: 'BALL' | 'STRIKE';
-  resolutionSummary: {
-    totalWinners: number;
-    totalLosers: number;
-    totalPayout: number;
-  };
+  outcome: string;
+  winners: number;
+  losers: number;
+  totalPayout: number;
 }
 ```
 
-#### 6.1.5 Faucet (Test Environment)
+#### 6.1.5 Sports & Categories
+
+**GET /api/sports**
+
+List all sports.
+
+```typescript
+// Response
+{
+  sports: Sport[];
+}
+```
+
+**GET /api/sports/:sportId/categories**
+
+List categories for a sport.
+
+```typescript
+// Response
+{
+  sportId: string;
+  categories: MarketCategory[];
+}
+```
+
+#### 6.1.6 Games
+
+**GET /api/games**
+
+List games with optional filters.
+
+```typescript
+// Query: ?sportId=baseball&status=ACTIVE
+
+// Response
+{
+  games: Game[];
+}
+```
+
+**POST /api/games**
+
+Create a new game.
+
+```typescript
+// Request
+{
+  sportId: string;
+  homeTeam: string;
+  awayTeam: string;
+  id?: string;        // Optional custom ID
+}
+
+// Response
+{
+  success: true;
+  game: Game;
+}
+```
+
+**GET /api/games/:gameId**
+
+Get game detail with associated markets.
+
+```typescript
+// Response
+{
+  game: Game;
+  markets: Market[];
+}
+```
+
+**POST /api/games/:gameId/activate** — Transition SCHEDULED → ACTIVE
+**POST /api/games/:gameId/complete** — Transition ACTIVE → COMPLETED
+
+#### 6.1.7 Users & Leaderboard
+
+**GET /api/users/:address**
+
+Get user stats.
+
+```typescript
+// Response
+{
+  user: UserStats;
+}
+// Returns 404 if user not found
+```
+
+**GET /api/users/:address/history**
+
+Get user's settlement history.
+
+```typescript
+// Response
+{
+  history: Settlement[];
+}
+```
+
+**GET /api/leaderboard**
+
+Get top users by net P&L.
+
+```typescript
+// Query: ?limit=10
+
+// Response
+{
+  leaderboard: UserStats[];
+}
+```
+
+#### 6.1.8 Faucet (Test Environment)
 
 **POST /api/faucet/user**
 
@@ -1845,12 +2059,12 @@ The following are NOT part of the MVP:
 2. **On-chain LP contracts** - LP deposits simulated via faucet
 3. **Real oracle integration** - Mock oracle only
 4. **Dispute resolution / Adjudicator** - Nice-to-have if time permits
-5. **Multiple games/markets** - One market at a time
-6. **Historical data persistence** - In-memory only
-7. **User authentication beyond wallet** - No accounts, profiles
+5. ~~**Multiple games/markets** - One market at a time~~ ✅ **IMPLEMENTED** — Multi-sport, multi-game, multi-category with concurrent market streams
+6. ~~**Historical data persistence** - In-memory only~~ ✅ **IMPLEMENTED** — SQLite via Drizzle ORM with full settlement audit trail
+7. ~~**User authentication beyond wallet** - No accounts, profiles~~ ✅ **IMPLEMENTED** — User stats tracking (bets, wins, losses, P&L)
 8. **Mobile-specific UI** - Desktop-first
 9. **Advanced betting features** - No parlays, no cash-out
-10. **Analytics/reporting** - Basic stats only
+10. ~~**Analytics/reporting** - Basic stats only~~ ✅ **IMPLEMENTED** — Leaderboard, user history, per-game market history
 
 ### 10.2 Production Environment Requirements
 
@@ -1859,7 +2073,7 @@ For production deployment (post-hackathon):
 1. **Production Clearnode** - Switch to production URL and real USDC
 2. **LP Smart Contract** - On-chain deposits, share tokens, withdrawals
 3. **MM Key Management** - HSM/KMS for MM private key
-4. **Database** - PostgreSQL or similar for persistence
+4. **PostgreSQL migration** - SQLite works for MVP; migrate to PostgreSQL for production (Drizzle ORM makes this straightforward)
 5. **Real Oracle** - Integration with sports data provider
 6. **Dispute Resolution** - Yellow Network adjudicator integration
 7. **Monitoring** - Logging, metrics, alerting
@@ -1872,18 +2086,19 @@ If time permits during hackathon:
 1. **Dispute demo** - Show adjudicator flow (even if simulated)
 2. **Auto-play with realistic timing** - More polished demo
 3. **Sound effects** - Audio feedback on wins/losses
-4. **Leaderboard** - Show top winners
-5. **Bet history** - Past bets and outcomes
+4. ~~**Leaderboard** - Show top winners~~ ✅ **IMPLEMENTED** — `GET /api/leaderboard`
+5. ~~**Bet history** - Past bets and outcomes~~ ✅ **IMPLEMENTED** — `GET /api/users/:address/history`
 
 ### 10.4 Architecture Decisions for Future Scaling
 
 The MVP architecture supports future enhancements:
 
-1. **Multiple markets** - Market Manager can be extended to handle concurrent markets
-2. **Database integration** - Position Tracker interface can be backed by DB
+1. ~~**Multiple markets** - Market Manager can be extended to handle concurrent markets~~ ✅ **Done** — Multi-game, multi-category concurrent market streams
+2. ~~**Database integration** - Position Tracker interface can be backed by DB~~ ✅ **Done** — SQLite + Drizzle ORM
 3. **Real oracle** - Oracle module has clean interface for swapping implementations
 4. **Production Clearnode** - Only URL changes needed
 5. **LP contracts** - LP Manager interface can be backed by on-chain contract
+6. **PostgreSQL** - Drizzle ORM abstraction makes switching from SQLite to PostgreSQL a config change
 
 ---
 

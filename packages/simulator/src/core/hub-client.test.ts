@@ -105,31 +105,66 @@ describe('HubClient', () => {
   });
 
   describe('openMarket', () => {
-    it('posts to /api/oracle/market/open', async () => {
-      mockFetch.mockResolvedValue(mockOk({ market: { id: 'market-1', status: 'OPEN' } }));
+    it('posts to /api/oracle/market/open with gameId and categoryId', async () => {
+      mockFetch.mockResolvedValue(mockOk({ success: true, marketId: 'game1-pitching-1' }));
 
-      const result = await client.openMarket();
-      expect(result.market.id).toBe('market-1');
+      const result = await client.openMarket('game1', 'pitching');
+      expect(result.marketId).toBe('game1-pitching-1');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/oracle/market/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: 'game1', categoryId: 'pitching' }),
+      });
     });
   });
 
   describe('closeMarket', () => {
     it('posts to /api/oracle/market/close', async () => {
-      mockFetch.mockResolvedValue(mockOk({ market: { id: 'market-1', status: 'CLOSED' } }));
+      mockFetch.mockResolvedValue(mockOk({ success: true, marketId: 'game1-pitching-1' }));
 
       const result = await client.closeMarket();
-      expect(result.market.status).toBe('CLOSED');
+      expect(result.success).toBe(true);
+      expect(result.marketId).toBe('game1-pitching-1');
     });
   });
 
   describe('resolveMarket', () => {
     it('posts outcome to /api/oracle/outcome', async () => {
-      mockFetch.mockResolvedValue(mockOk({ market: { id: 'market-1', status: 'RESOLVED', outcome: 'BALL' } }));
+      mockFetch.mockResolvedValue(mockOk({ success: true, marketId: 'game1-pitching-1', outcome: 'BALL', winners: 2, losers: 1, totalPayout: 15 }));
 
       const result = await client.resolveMarket('BALL');
-      expect(result.market.outcome).toBe('BALL');
+      expect(result.outcome).toBe('BALL');
+      expect(result.winners).toBe(2);
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.outcome).toBe('BALL');
+    });
+  });
+
+  describe('createGame', () => {
+    it('posts to /api/games', async () => {
+      mockFetch.mockResolvedValue(mockOk({ success: true, game: { id: 'game-1', status: 'SCHEDULED' } }));
+
+      const result = await client.createGame('baseball', 'Home', 'Away');
+      expect(result.game.id).toBe('game-1');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sportId: 'baseball', homeTeam: 'Home', awayTeam: 'Away' }),
+      });
+    });
+  });
+
+  describe('activateGame', () => {
+    it('posts to /api/games/:gameId/activate', async () => {
+      mockFetch.mockResolvedValue(mockOk({ success: true, game: { id: 'game-1', status: 'ACTIVE' } }));
+
+      const result = await client.activateGame('game-1');
+      expect(result.game.id).toBe('game-1');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/games/game-1/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
     });
   });
 

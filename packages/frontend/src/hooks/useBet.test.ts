@@ -114,6 +114,38 @@ describe('useBet', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('calls refreshBalance after successful bet', async () => {
+    const mockRefreshBalance = jest.fn();
+    setupClearnodeMock({ refreshBalance: mockRefreshBalance });
+    mockPlaceBet.mockResolvedValueOnce({ accepted: true, shares: 9.5 });
+
+    const { result } = renderHook(() =>
+      useBet({ address: '0x123', marketId: 'market-1' })
+    );
+
+    await act(async () => {
+      await result.current.bet('BALL', 10);
+    });
+
+    expect(mockRefreshBalance).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call refreshBalance when bet is rejected', async () => {
+    const mockRefreshBalance = jest.fn();
+    setupClearnodeMock({ refreshBalance: mockRefreshBalance });
+    mockPlaceBet.mockResolvedValueOnce({ accepted: false, reason: 'No' });
+
+    const { result } = renderHook(() =>
+      useBet({ address: '0x123', marketId: 'market-1' })
+    );
+
+    await act(async () => {
+      await result.current.bet('BALL', 10);
+    });
+
+    expect(mockRefreshBalance).not.toHaveBeenCalled();
+  });
+
   it('shows error when Clearnode session creation fails (hub never called)', async () => {
     mockCreateAppSession.mockRejectedValueOnce(new Error('Session creation failed'));
 

@@ -1,13 +1,25 @@
 'use client';
 
-import { useMarket } from '@/providers/MarketProvider';
+import { useSelectedMarket } from '@/providers/SelectedMarketProvider';
+
+const OUTCOME_COLORS = [
+  { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
+  { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
+  { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
+  { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400' },
+  { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
+];
+
+function getColor(index: number) {
+  return OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+}
 
 interface OddsDisplayProps {
   className?: string;
 }
 
 export function OddsDisplay({ className = '' }: OddsDisplayProps) {
-  const { priceBall, priceStrike, market, isLoading } = useMarket();
+  const { prices, outcomes, market, isLoading } = useSelectedMarket();
 
   if (isLoading) {
     return (
@@ -36,6 +48,7 @@ export function OddsDisplay({ className = '' }: OddsDisplayProps) {
   };
 
   const isMarketOpen = market?.status === 'OPEN';
+  const cols = outcomes.length <= 2 ? 'grid-cols-2' : outcomes.length === 3 ? 'grid-cols-3' : `grid-cols-2 sm:grid-cols-${Math.min(outcomes.length, 4)}`;
 
   return (
     <div className={`bg-gray-800 rounded-lg p-6 ${className}`} data-testid="odds-display">
@@ -52,31 +65,26 @@ export function OddsDisplay({ className = '' }: OddsDisplayProps) {
           {market?.status || 'NO MARKET'}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div
-          className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-center"
-          data-testid="odds-ball"
-        >
-          <div className="text-2xl font-bold text-blue-400" data-testid="price-ball-percent">
-            {formatPercent(priceBall)}
-          </div>
-          <div className="text-sm text-gray-400 mt-1" data-testid="price-ball-american">
-            {formatOdds(priceBall)}
-          </div>
-          <div className="text-xs text-gray-500 mt-2">Ball</div>
-        </div>
-        <div
-          className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-center"
-          data-testid="odds-strike"
-        >
-          <div className="text-2xl font-bold text-red-400" data-testid="price-strike-percent">
-            {formatPercent(priceStrike)}
-          </div>
-          <div className="text-sm text-gray-400 mt-1" data-testid="price-strike-american">
-            {formatOdds(priceStrike)}
-          </div>
-          <div className="text-xs text-gray-500 mt-2">Strike</div>
-        </div>
+      <div className={`grid ${cols} gap-4`}>
+        {outcomes.map((outcome, i) => {
+          const color = getColor(i);
+          const price = prices[i] ?? 0.5;
+          return (
+            <div
+              key={outcome}
+              className={`${color.bg} border ${color.border} rounded-lg p-4 text-center`}
+              data-testid={`odds-${outcome.toLowerCase()}`}
+            >
+              <div className={`text-2xl font-bold ${color.text}`} data-testid={`price-${outcome.toLowerCase()}-percent`}>
+                {formatPercent(price)}
+              </div>
+              <div className="text-sm text-gray-400 mt-1" data-testid={`price-${outcome.toLowerCase()}-american`}>
+                {formatOdds(price)}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">{outcome}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,12 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BetForm } from './BetForm';
-import * as MarketProvider from '@/providers/MarketProvider';
+import * as SelectedMarketProvider from '@/providers/SelectedMarketProvider';
 import * as WagmiProvider from '@/providers/WagmiProvider';
 import * as api from '@/lib/api';
 
-jest.mock('@/providers/MarketProvider', () => ({
-  useMarket: jest.fn(),
+jest.mock('@/providers/SelectedMarketProvider', () => ({
+  useSelectedMarket: jest.fn(),
 }));
 
 jest.mock('@/providers/WagmiProvider', () => ({
@@ -46,16 +46,16 @@ jest.mock('@/lib/config', () => ({
   MM_ADDRESS: '0xMM' as `0x${string}`,
 }));
 
-const mockUseMarket = MarketProvider.useMarket as jest.Mock;
+const mockUseSelectedMarket = SelectedMarketProvider.useSelectedMarket as jest.Mock;
 const mockUseWallet = WagmiProvider.useWallet as jest.Mock;
 const mockPlaceBet = api.placeBet as jest.MockedFunction<typeof api.placeBet>;
 
 describe('BetForm', () => {
   beforeEach(() => {
-    mockUseMarket.mockReturnValue({
+    mockUseSelectedMarket.mockReturnValue({
       market: { id: 'market-1', status: 'OPEN' },
-      priceBall: 0.5,
-      priceStrike: 0.5,
+      outcomes: ['BALL', 'STRIKE'],
+      prices: [0.5, 0.5],
     });
     mockUseWallet.mockReturnValue({
       address: '0x123',
@@ -64,7 +64,7 @@ describe('BetForm', () => {
     mockPlaceBet.mockReset();
   });
 
-  it('renders bet form with outcome buttons', () => {
+  it('renders bet form with dynamic outcome buttons', () => {
     render(<BetForm />);
 
     expect(screen.getByTestId('bet-form')).toBeInTheDocument();
@@ -73,11 +73,25 @@ describe('BetForm', () => {
     expect(screen.getByTestId('amount-input')).toBeInTheDocument();
   });
 
+  it('renders 3-outcome buttons dynamically', () => {
+    mockUseSelectedMarket.mockReturnValue({
+      market: { id: 'market-2', status: 'OPEN' },
+      outcomes: ['MAKE', 'MISS', 'FOUL'],
+      prices: [0.33, 0.33, 0.34],
+    });
+
+    render(<BetForm />);
+
+    expect(screen.getByTestId('outcome-make')).toBeInTheDocument();
+    expect(screen.getByTestId('outcome-miss')).toBeInTheDocument();
+    expect(screen.getByTestId('outcome-foul')).toBeInTheDocument();
+  });
+
   it('shows warning when market is not open', () => {
-    mockUseMarket.mockReturnValue({
+    mockUseSelectedMarket.mockReturnValue({
       market: { id: 'market-1', status: 'CLOSED' },
-      priceBall: 0.5,
-      priceStrike: 0.5,
+      outcomes: ['BALL', 'STRIKE'],
+      prices: [0.5, 0.5],
     });
 
     render(<BetForm />);

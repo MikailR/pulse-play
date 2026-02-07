@@ -106,8 +106,11 @@ export function MarketProvider({ children }: MarketProviderProps) {
                 }
               : {
                   id: message.marketId,
+                  gameId: '',
+                  categoryId: '',
                   status: message.status as MarketStatus,
                   outcome: message.outcome ?? null,
+                  quantities: [0, 0],
                   qBall: 0,
                   qStrike: 0,
                   b: 100,

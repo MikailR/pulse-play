@@ -1,6 +1,5 @@
 import { buildApp } from '../app.js';
-import { createTestContext } from '../context.js';
-import { resetMarketCounter } from './oracle.routes.js';
+import { createTestContext, DEFAULT_TEST_GAME_ID, DEFAULT_TEST_CATEGORY_ID } from '../context.js';
 import type { AppContext } from '../context.js';
 import type { FastifyInstance } from 'fastify';
 
@@ -9,7 +8,6 @@ describe('Oracle Routes', () => {
   let ctx: AppContext;
 
   beforeEach(async () => {
-    resetMarketCounter();
     ctx = createTestContext();
     app = await buildApp(ctx);
   });
@@ -18,10 +16,13 @@ describe('Oracle Routes', () => {
     await app.close();
   });
 
-  // Helper to set game active and open a market
+  // Helper to open a market (test game is already ACTIVE from seed)
   async function activateAndOpenMarket() {
-    await app.inject({ method: 'POST', url: '/api/oracle/game-state', payload: { active: true } });
-    const res = await app.inject({ method: 'POST', url: '/api/oracle/market/open' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/oracle/market/open',
+      payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+    });
     return res.json().marketId as string;
   }
 
@@ -81,27 +82,54 @@ describe('Oracle Routes', () => {
 
   describe('market open', () => {
     test('opens a new market when game is active', async () => {
-      ctx.oracle.setGameActive(true);
-      const res = await app.inject({ method: 'POST', url: '/api/oracle/market/open' });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/open',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(res.json().success).toBe(true);
       expect(res.json().marketId).toBeDefined();
     });
 
     test('returns 400 when game is not active', async () => {
-      const res = await app.inject({ method: 'POST', url: '/api/oracle/market/open' });
+      // Complete the game so it's no longer ACTIVE
+      ctx.gameManager.completeGame(DEFAULT_TEST_GAME_ID);
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/open',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('Game is not active');
+    });
+
+    test('returns 400 when gameId or categoryId is missing', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/open',
+        payload: {},
+      });
       expect(res.statusCode).toBe(400);
     });
 
     test('returns 400 when a market is already OPEN', async () => {
       await activateAndOpenMarket();
-      const res = await app.inject({ method: 'POST', url: '/api/oracle/market/open' });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/open',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(res.statusCode).toBe(400);
     });
 
     test('broadcasts MARKET_STATUS(OPEN) via WebSocket', async () => {
       const spy = jest.spyOn(ctx.ws, 'broadcast');
       ctx.oracle.setGameActive(true);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/open' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/open',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(spy).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'MARKET_STATUS', status: 'OPEN' }),
       );
@@ -110,15 +138,22 @@ describe('Oracle Routes', () => {
     test('broadcasts ODDS_UPDATE with 50/50 prices on market open', async () => {
       const spy = jest.spyOn(ctx.ws, 'broadcast');
       ctx.oracle.setGameActive(true);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/open' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/open',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(spy).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'ODDS_UPDATE',
+          prices: [0.5, 0.5],
+          quantities: [0, 0],
+          outcomes: ['BALL', 'STRIKE'],
           priceBall: 0.5,
           priceStrike: 0.5,
           qBall: 0,
           qStrike: 0,
-          marketId: 'market-1',
+          marketId: `${DEFAULT_TEST_GAME_ID}-${DEFAULT_TEST_CATEGORY_ID}-1`,
         }),
       );
     });
@@ -135,26 +170,46 @@ describe('Oracle Routes', () => {
   describe('market close', () => {
     test('closes an OPEN market', async () => {
       await activateAndOpenMarket();
-      const res = await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(res.json().success).toBe(true);
     });
 
     test('returns 400 when no market is open', async () => {
-      const res = await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(res.statusCode).toBe(400);
     });
 
     test('returns 400 when market is already CLOSED', async () => {
       await activateAndOpenMarket();
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
-      const res = await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(res.statusCode).toBe(400);
     });
 
     test('broadcasts MARKET_STATUS(CLOSED) via WebSocket', async () => {
       await activateAndOpenMarket();
       const spy = jest.spyOn(ctx.ws, 'broadcast');
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
       expect(spy).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'MARKET_STATUS', status: 'CLOSED' }),
       );
@@ -166,12 +221,16 @@ describe('Oracle Routes', () => {
   describe('outcome/resolution', () => {
     test('resolves a CLOSED market with BALL outcome', async () => {
       const marketId = await activateAndOpenMarket();
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const res = await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       const body = res.json();
       expect(body.success).toBe(true);
@@ -180,12 +239,16 @@ describe('Oracle Routes', () => {
 
     test('resolves a CLOSED market with STRIKE outcome', async () => {
       await activateAndOpenMarket();
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const res = await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'STRIKE' },
+        payload: { outcome: 'STRIKE', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       expect(res.json().outcome).toBe('STRIKE');
     });
@@ -195,19 +258,23 @@ describe('Oracle Routes', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       expect(res.statusCode).toBe(400);
     });
 
     test('returns 400 for invalid outcome value', async () => {
       await activateAndOpenMarket();
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const res = await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'FOUL' },
+        payload: { outcome: 'FOUL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       expect(res.statusCode).toBe(400);
     });
@@ -216,12 +283,16 @@ describe('Oracle Routes', () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xAlice', marketId, 'BALL', 10);
       await placeBet('0xBob', marketId, 'STRIKE', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const res = await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       const body = res.json();
       expect(body.winners).toBe(1);
@@ -231,12 +302,16 @@ describe('Oracle Routes', () => {
     test('clears positions after resolution', async () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xAlice', marketId, 'BALL', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
 
       const positions = ctx.positionTracker.getPositionsByMarket(marketId);
@@ -245,13 +320,17 @@ describe('Oracle Routes', () => {
 
     test('broadcasts MARKET_STATUS(RESOLVED) via WebSocket', async () => {
       await activateAndOpenMarket();
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const spy = jest.spyOn(ctx.ws, 'broadcast');
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       expect(spy).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'MARKET_STATUS', status: 'RESOLVED' }),
@@ -261,13 +340,17 @@ describe('Oracle Routes', () => {
     test('sends BET_RESULT(WIN) to winners via sendTo', async () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xAlice', marketId, 'BALL', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const spy = jest.spyOn(ctx.ws, 'sendTo');
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       expect(spy).toHaveBeenCalledWith(
         '0xAlice',
@@ -278,13 +361,17 @@ describe('Oracle Routes', () => {
     test('sends BET_RESULT(LOSS) to losers via sendTo', async () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xBob', marketId, 'STRIKE', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const spy = jest.spyOn(ctx.ws, 'sendTo');
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       expect(spy).toHaveBeenCalledWith(
         '0xBob',
@@ -294,12 +381,16 @@ describe('Oracle Routes', () => {
 
     test('handles market with no positions (no bets placed)', async () => {
       await activateAndOpenMarket();
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const res = await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
       const body = res.json();
       expect(body.success).toBe(true);
@@ -312,7 +403,11 @@ describe('Oracle Routes', () => {
     test('calls submitAppState + closeSession for losers', async () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xBob', marketId, 'STRIKE', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
       const closeSession = ctx.clearnodeClient.closeSession as jest.Mock;
@@ -320,7 +415,7 @@ describe('Oracle Routes', () => {
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
 
       // Loser: Bob bet STRIKE, outcome is BALL
@@ -350,7 +445,11 @@ describe('Oracle Routes', () => {
     test('calls closeSession + transfer for winners', async () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xAlice', marketId, 'BALL', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const closeSession = ctx.clearnodeClient.closeSession as jest.Mock;
       const transfer = ctx.clearnodeClient.transfer as jest.Mock;
@@ -358,7 +457,7 @@ describe('Oracle Routes', () => {
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
 
       // Winner: Alice bet BALL, outcome is BALL
@@ -385,20 +484,24 @@ describe('Oracle Routes', () => {
 
     test('does not call transfer when profit is zero', async () => {
       const marketId = await activateAndOpenMarket();
-      // Place a large bet that pushes price near 1, then shares ≈ costPaid
+      // Place a large bet that pushes price near 1, then shares = costPaid
       // For a simpler approach: we'll mock a position directly with costPaid = shares
       ctx.positionTracker.addPosition({
         address: '0xEve',
         marketId,
         outcome: 'BALL',
         shares: 10,
-        costPaid: 10,  // costPaid equals shares → profit = 0
+        costPaid: 10,  // costPaid equals shares -> profit = 0
         appSessionId: 'sess-even',
         appSessionVersion: 1,
         sessionStatus: 'open',
         timestamp: Date.now(),
       });
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const transfer = ctx.clearnodeClient.transfer as jest.Mock;
       transfer.mockClear();
@@ -406,7 +509,7 @@ describe('Oracle Routes', () => {
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
 
       // Since payout (shares=10) - costPaid (10) = 0, no transfer
@@ -417,7 +520,11 @@ describe('Oracle Routes', () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xAlice', marketId, 'BALL', 10);
       await placeBet('0xBob', marketId, 'STRIKE', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       // Make loser's submitAppState fail
       (ctx.clearnodeClient.submitAppState as jest.Mock).mockRejectedValueOnce(new Error('Clearnode down'));
@@ -428,7 +535,7 @@ describe('Oracle Routes', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
 
       // Should still succeed overall
@@ -446,7 +553,11 @@ describe('Oracle Routes', () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xAlice', marketId, 'BALL', 10);
       await placeBet('0xBob', marketId, 'STRIKE', 10);
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const callOrder: string[] = [];
       (ctx.clearnodeClient.submitAppState as jest.Mock).mockImplementation(async () => {
@@ -463,7 +574,7 @@ describe('Oracle Routes', () => {
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
 
       // Loser operations (submitAppState + closeSession) should come before winner operations
@@ -478,7 +589,11 @@ describe('Oracle Routes', () => {
 
     test('no Clearnode calls when no positions exist', async () => {
       await activateAndOpenMarket();
-      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
 
       const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
       const closeSession = ctx.clearnodeClient.closeSession as jest.Mock;
@@ -490,7 +605,7 @@ describe('Oracle Routes', () => {
       await app.inject({
         method: 'POST',
         url: '/api/oracle/outcome',
-        payload: { outcome: 'BALL' },
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
       });
 
       expect(submitAppState).not.toHaveBeenCalled();

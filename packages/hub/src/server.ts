@@ -9,15 +9,23 @@ config({ path: resolve(__dirname, '../.env') });
 import { buildApp } from './app.js';
 import { MarketManager } from './modules/market/manager.js';
 import { PositionTracker } from './modules/position/tracker.js';
+import { GameManager } from './modules/game/manager.js';
+import { UserTracker } from './modules/user/tracker.js';
 import { ClearnodeClient } from './modules/clearnode/client.js';
 import { OracleService } from './modules/oracle/oracle.js';
 import { WsManager } from './api/ws.js';
 import { logger } from './logger.js';
+import { createDb, seedDefaults } from './db/index.js';
 import type { AppContext } from './context.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
+const DB_PATH = process.env.DB_PATH ?? resolve(__dirname, '../data/pulseplay.db');
 
 async function main() {
+  // Initialize SQLite database
+  const db = createDb(DB_PATH);
+  seedDefaults(db);
+
   const clearnodeClient = new ClearnodeClient({
     url: process.env.CLEARNODE_URL ?? 'wss://clearnode.yellow.com/ws',
     mmPrivateKey: (process.env.MM_PRIVATE_KEY ?? '0x') as `0x${string}`,
@@ -27,8 +35,11 @@ async function main() {
   });
 
   const ctx: AppContext = {
-    marketManager: new MarketManager(),
-    positionTracker: new PositionTracker(),
+    db,
+    marketManager: new MarketManager(db),
+    positionTracker: new PositionTracker(db),
+    gameManager: new GameManager(db),
+    userTracker: new UserTracker(db),
     clearnodeClient,
     oracle: new OracleService(),
     ws: new WsManager(),

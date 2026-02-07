@@ -1218,3 +1218,289 @@ Date: 2026-02-06
 - Also reverted borderLeft={false} on EventLog and SystemInfo panels (left borders restored).
 - Files changed: useWebSocket.ts, App.tsx, SystemInfo.tsx, EventLog.tsx
 - All 47 dashboard tests pass, TypeScript builds clean.
+
+--- 2026-02-06: Sport Routes Tests ---
+- Created comprehensive test suite for sport.routes.ts
+- Tests cover GET /api/sports (returns all seeded sports with expected fields)
+- Tests cover GET /api/sports/:sportId/categories for baseball (2 categories), basketball (2 categories), soccer (1 category)
+- Tests verify 404 for non-existent sport and empty array for sport with no categories
+- All 8 tests pass
+- Files created: hub/src/api/sport.routes.test.ts
+
+
+--- 2026-02-06: User Routes Tests ---
+- Created comprehensive test suite for user.routes.ts (13 tests)
+- Tests cover GET /api/users/:address (404 for unknown, returns stats, all fields present, correct stats after wins/losses)
+- Tests cover GET /api/users/:address/history (empty array for no history, settlement history after full market lifecycle, multiple settlements)
+- Tests cover GET /api/leaderboard (empty array when no users, sorted by netPnl DESC, respects limit parameter, defaults to 10)
+- All tests use full market lifecycle to create settlement history: createMarket → openMarket → addPosition → closeMarket → resolveMarket → clearPositions
+- All 13 tests pass
+- Files created: hub/src/api/user.routes.test.ts
+- Total test count: Hub 246 passed (was 233, +13)
+
+--- 2026-02-06: Game Routes Tests ---
+- Created comprehensive test suite for game.routes.ts (19 tests)
+- Tests cover GET /api/games (all games, filter by sportId, filter by status)
+- Tests cover POST /api/games (auto-generated ID, custom ID, missing required fields validation)
+- Tests cover GET /api/games/:gameId (returns game with markets, 404 for non-existent, includes markets array, empty markets when none exist)
+- Tests cover POST /api/games/:gameId/activate (activates SCHEDULED game, validates status transitions, sets startedAt timestamp)
+- Tests cover POST /api/games/:gameId/complete (completes ACTIVE game, validates status transitions, sets completedAt timestamp)
+- All tests use seeded sports (baseball, basketball, soccer) to satisfy foreign key constraints
+- All 19 tests pass
+- Files created: hub/src/api/game.routes.test.ts
+- Total test count: Hub 265 passed (was 246, +19)
+
+Key learnings:
+- Games table has foreign key reference to sports table, so sportId must exist before creating a game
+- Market categories also have foreign key to sports, so categoryId must exist for the sport
+- Default test context seeds baseball, basketball, and soccer sports with various categories
+- GameManager enforces strict status transitions: SCHEDULED → ACTIVE → COMPLETED (no backwards)
+
+--- 2026-02-06: SQLite DB Integration COMPLETE ---
+
+## Full summary of SQLite Database Integration (feature/sqlite-db branch)
+
+All 12 steps of the plan are complete. Work done in git worktree at ../pulse-play-sqlite.
+
+### What was built:
+1. **DB Module** (packages/hub/src/db/) — 7 Drizzle tables: sports, market_categories, games, markets, positions, users, settlements. Schema push for hackathon (no migrations). WAL mode + FK enforcement in production, in-memory for tests.
+2. **MarketManager refactored** — DB-backed with auto-generated market IDs ({gameId}-{categoryId}-{seqNum}), getCurrentMarket by game+category query, market history
+3. **PositionTracker refactored** — DB-backed with settlement archival (clearPositions copies to settlements before delete)
+4. **GameManager** (new) — CRUD for games with status machine: SCHEDULED → ACTIVE → COMPLETED
+5. **UserTracker** (new) — User stats aggregation (bets, wins, losses, P&L), leaderboard, settlement history
+6. **Oracle routes updated** — Accept gameId/categoryId, validate outcomes against category's outcomeA/outcomeB
+7. **3 new API route files** — sport.routes.ts, game.routes.ts, user.routes.ts + tests
+8. **PROJECT_SPECIFICATION.md updated** — New data models, API contracts, removed items from "out of scope"
+
+### Test results:
+- 24 test suites, 323 tests passing, 6 skipped (clearnode session tests)
+- All existing tests migrated to DB-backed managers with zero behavioral regressions
+
+### Files created (new):
+- packages/hub/src/db/schema.ts, connection.ts, seed.ts, index.ts, db.test.ts
+- packages/hub/src/modules/game/types.ts, manager.ts, manager.test.ts, index.ts
+- packages/hub/src/modules/user/types.ts, tracker.ts, tracker.test.ts, index.ts
+- packages/hub/src/api/sport.routes.ts, sport.routes.test.ts
+- packages/hub/src/api/game.routes.ts, game.routes.test.ts
+- packages/hub/src/api/user.routes.ts, user.routes.test.ts
+
+### Files modified:
+- packages/hub/package.json (drizzle-orm, better-sqlite3 deps)
+- packages/hub/src/modules/lmsr/types.ts (Outcome → string)
+- packages/hub/src/modules/market/types.ts, manager.ts, manager.test.ts
+- packages/hub/src/modules/position/tracker.ts, tracker.test.ts
+- packages/hub/src/context.ts, server.ts, app.ts
+- packages/hub/src/api/oracle.routes.ts, admin.routes.ts, bet.routes.ts + all route tests
+- PROJECT_SPECIFICATION.md
+
+### Next steps:
+- Merge feature/sqlite-db into main
+
+---
+
+## Frontend/Dashboard/Simulator Compatibility Refactoring
+Date: 2026-02-06
+
+### Problem
+The SQLite DB integration changed the hub backend API in breaking ways:
+1. `POST /api/oracle/market/open` now **requires** `{ gameId, categoryId }` (was empty body)
+2. `POST /api/oracle/outcome` now returns `{ winners: number, losers: number }` (was `string[]` arrays)
+3. `Outcome` type widened from `'BALL' | 'STRIKE'` to `string` for multi-sport support
+4. Market IDs now auto-generated as `{gameId}-{categoryId}-{seqNum}` instead of `market-1`
+
+### Changes Made
+
+#### All Packages — `Outcome` type widened
+- `frontend/src/lib/types.ts`: `Outcome = string`
+- `dashboard/src/types.ts`: `Outcome = string`
+- `simulator/src/types.ts`: `Outcome = string`
+
+#### Frontend
+- **types.ts**: `MarketOpenRequest` changed from `{ pitchId? }` to `{ gameId, categoryId }`. `OutcomeResponse` changed from `winners: string[]` to `winners: number`.
+- **api.ts**: `openMarket()` requires `MarketOpenRequest` (no default). Added `createGame()`, `activateGame()`, `getGames()` API functions.
+- **MarketControls.tsx**: Uses `useRef` for `gameIdRef`. On "Open Market", auto-creates a game (baseball, Demo Home vs Demo Away) and activates it if needed, then opens market with `{ gameId, categoryId: 'pitching' }`. Resolve result uses `result.winners` (number) directly instead of `.length`.
+- **GameControls.tsx** (new): Separate component for game state (active/inactive) toggle.
+- **GameControls.test.tsx** (new): 5 tests for game state control.
+- **MarketControls.test.tsx**: Updated resolve mock from `winners: ['0x111']` to `winners: 1`. Added `createGame`/`activateGame` mocks.
+- **api.test.ts**: Updated `openMarket` test from `{ pitchId }` to `{ gameId, categoryId }`.
+
+#### Dashboard
+- **types.ts**: `Outcome = string`
+- **formatters.ts**: `getOutcomeColor()` now handles multi-sport outcomes (BALL, MAKE, GOAL, HIT → cyan). `formatOutcomeShort()` uses first 4 chars for outcomes longer than 4 characters.
+- **formatters.test.ts**: Updated `STRIKE` abbreviation from `STRK` to `STRI`.
+
+#### Simulator
+- **types.ts**: `Outcome = string`
+- **hub-client.ts**: `openMarket(gameId, categoryId)` — requires params, returns `{ success, marketId }`. `closeMarket()` returns `{ success, marketId }`. `resolveMarket()` returns `{ success, marketId, outcome, winners, losers, totalPayout }`. Added `createGame()` and `activateGame()`.
+- **hub-client.test.ts**: All oracle tests updated for new signatures/return types. Added createGame/activateGame tests.
+- **App.tsx**: `:open` command now creates game + activates + opens market. Uses `res.marketId` instead of `res.market.id`.
+
+### Test Results
+- **Hub:** 24 suites, 323 passed (6 skipped)
+- **Frontend:** 24 suites, 185 passed
+- **Dashboard:** 1 suite, 47 passed
+- **Simulator:** 5 suites, 108 passed
+- **Total:** 54 suites, 663 tests passing
+
+### Backward Compatibility Notes
+- `POST /api/oracle/market/close` and `POST /api/oracle/outcome` still work WITHOUT `gameId`/`categoryId` (falls back to latest non-RESOLVED market)
+- `POST /api/oracle/market/open` is NOT backward compatible — requires both params
+- Frontend/simulator auto-create games transparently when opening markets
+
+---
+
+## Fix Hub Test Files After N-Outcome LMSR Generalization
+Date: 2026-02-06
+
+### Problem
+After generalizing the LMSR engine and DB schema from binary (qBall/qStrike, outcomeA/outcomeB) to N-outcome arrays (quantities[], outcomes[]), several test files still referenced the old field names and API shapes, causing test failures.
+
+### Changes Made
+
+1. **`api/bet.routes.test.ts`**
+   - `market.qBall` -> `market.quantities[0]` (line 111)
+   - Updated test title from "not BALL or STRIKE" to "not in category outcomes"
+   - ODDS_UPDATE broadcast assertion: added `prices`, `quantities`, `outcomes` array expectations
+
+2. **`api/market.routes.test.ts`**
+   - `updateQuantities(market.id, 10, 0)` -> `updateQuantities(market.id, [10, 0])` (two occurrences)
+
+3. **`api/oracle.routes.test.ts`**
+   - ODDS_UPDATE broadcast assertion: added `prices`, `quantities`, `outcomes` fields alongside backward-compat `priceBall`/`priceStrike`/`qBall`/`qStrike`
+
+4. **`api/sport.routes.test.ts`**
+   - `pitching.outcomeA`/`pitching.outcomeB` -> `pitching.outcomes` (toEqual array)
+   - Same for `freeThrow`, `threePointer`, and `penalty` categories
+
+5. **`modules/user/tracker.test.ts`**
+   - Market insert: `qA: 0, qB: 0` -> `quantities: JSON.stringify([0, 0])`
+
+6. **`modules/position/tracker.test.ts`**
+   - Market insert helper: `qA: 0, qB: 0` -> `quantities: JSON.stringify([0, 0])`
+
+7. **`__tests__/integration.test.ts`**
+   - `market.qBall`/`market.qStrike` -> `market.quantities[0]`/`market.quantities[1]`
+
+8. **`db/db.test.ts`** (discovered during test run, not in original list)
+   - `pitching.outcomeA`/`outcomeB` -> `JSON.parse(pitching.outcomes)` (toEqual array)
+   - Same for `freeThrow` and `penalty` categories
+
+### Files NOT needing changes (confirmed clean)
+- `api/positions.routes.test.ts` — no old-style references
+- `api/game.routes.test.ts` — no old-style references
+- `api/admin.routes.test.ts` — already using correct shapes
+
+### Test Results
+- **Hub:** 24 suites passed (1 skipped), 338 tests passed (6 skipped — pre-existing Clearnode session tests)
+- Zero failures
+
+---
+
+## Multi-Market Frontend + N-Outcome LMSR Generalization — COMPLETE
+Date: 2026-02-06
+
+### Summary
+All 12 steps of the multi-market frontend plan are complete. The frontend has been transformed from a single hardcoded baseball/pitching market to a multi-sport, multi-game, multi-category platform with dynamic N-outcome support.
+
+### Steps Completed (in this session — Steps 5-12):
+
+**Step 5: Frontend Types + API Client Updates**
+- Rewrote `types.ts` with new domain models: Sport, MarketCategory, Game, UserStats, Settlement
+- Updated MarketData with `quantities[]`, `prices[]`, `outcomes[]` (+ backward compat)
+- Added 15+ new API functions: getMarketById, getSports, getSportCategories, getGames, getGame, createGame, activateGame, completeGame, getAdminPositions, getUserStats, getUserHistory, getLeaderboard
+- 31 API tests
+
+**Step 6: SelectedMarketProvider**
+- New context provider that takes `marketId` prop, fetches via `getMarketById`
+- Subscribes to WS filtered by marketId (ODDS_UPDATE, MARKET_STATUS)
+- Replaces MarketProvider for per-market subscriptions
+- 8 tests
+
+**Step 7: Adapt Bettor Components for N Outcomes**
+- OddsDisplay, BetForm, PositionList all use `useSelectedMarket()` with dynamic outcome rendering
+- OUTCOME_COLORS array cycles for any N outcomes
+- Oracle components (MarketControls, GameControls, StateDisplay) updated for new context
+- All component tests updated
+
+**Step 8: Home Page — Game Browser**
+- New components: SportFilter, GameCard, GameList
+- Home page (`/`) shows game grid with sport filtering
+- Auto-refreshes via WebSocket GAME_STATE and MARKET_STATUS events
+- 26 tests
+
+**Step 9: Game Detail Page (`/game/[gameId]`)**
+- New components: GameHeader, MarketSelector
+- Dynamic route page wraps betting components in SelectedMarketProvider
+- Category pills with market status badges
+- Auto-refreshes via WebSocket
+- 18 tests
+
+**Step 10: Oracle Page Redesign**
+- New components: GameSelector (with inline create-game form), CategorySelector
+- GameControls rewritten to accept Game prop (Activate/Complete lifecycle)
+- Full flow: select/create game → select category → game controls + market controls + odds
+- 15 tests for new components, 34 total oracle tests
+
+**Step 11: Admin Page (`/admin`)**
+- New components: AdminTabs, SportsPanel, GamesPanel, MarketsPanel, UsersPanel, LeaderboardPanel
+- Tab-based navigation: Sports | Games | Markets | Users | Leaderboard
+- SportsPanel: expandable categories with outcome badges
+- GamesPanel: status filters, create game, activate/complete actions
+- MarketsPanel: game dropdown → markets → expandable positions
+- UsersPanel: leaderboard with expandable settlement history
+- LeaderboardPanel: ranked table with top-3 indicators
+- 18 tests
+
+**Step 12: Navigation + Cleanup**
+- Header: "Bettor" renamed to "Games", "Admin" link added
+- Build verified: `next build` passes cleanly
+- MarketProvider type fix: added gameId, categoryId, quantities to fallback branch
+- All lint/type errors resolved
+
+### Test Results
+- **Hub:** 24 suites, 338 passed (6 skipped)
+- **Frontend:** 37 suites, 296 passed
+- **Dashboard:** 47 passed (unchanged)
+- **Simulator:** 106+ passed (unchanged)
+- **Frontend build:** ✅ clean
+- **Total:** 780+ passing tests
+
+### New Frontend Pages
+| Route | Description |
+|---|---|
+| `/` | Game browser with sport filtering |
+| `/game/[gameId]` | Game detail with category selection + betting |
+| `/oracle` | Oracle: game management, market lifecycle, resolution |
+| `/admin` | Admin: sports, games, markets, users, leaderboard |
+| `/market-maker` | Market maker: balance + faucet (unchanged) |
+| `/account` | Account: session, faucet, balance (unchanged) |
+
+### New Frontend Components
+| Component | Path |
+|---|---|
+| SportFilter | `components/games/SportFilter.tsx` |
+| GameCard | `components/games/GameCard.tsx` |
+| GameList | `components/games/GameList.tsx` |
+| GameHeader | `components/games/GameHeader.tsx` |
+| MarketSelector | `components/games/MarketSelector.tsx` |
+| GameSelector | `components/oracle/GameSelector.tsx` |
+| CategorySelector | `components/oracle/CategorySelector.tsx` |
+| AdminTabs | `components/admin/AdminTabs.tsx` |
+| SportsPanel | `components/admin/SportsPanel.tsx` |
+| GamesPanel | `components/admin/GamesPanel.tsx` |
+| MarketsPanel | `components/admin/MarketsPanel.tsx` |
+| UsersPanel | `components/admin/UsersPanel.tsx` |
+| LeaderboardPanel | `components/admin/LeaderboardPanel.tsx` |
+
+### Backward Compatibility
+- All API responses and WS messages include BOTH old format (priceBall/priceStrike/qBall/qStrike) and new array format (prices[], quantities[], outcomes[])
+- Dashboard and simulator continue to work using old field names
+- Old MarketProvider still exists (for backward compat) but removed from global layout
+- Frontend exclusively uses new array fields via SelectedMarketProvider
+
+### What dashboard/simulator need to be updated for (next agent):
+- Dashboard/simulator still use `priceBall`/`priceStrike`/`qBall`/`qStrike` fields
+- These work fine for 2-outcome markets (backward compat fields populated)
+- For 3+ outcome markets, old fields default to first 2 elements (degraded display)
+- To fully support N outcomes: update to use `prices[]`/`quantities[]`/`outcomes[]` arrays
+- Dashboard LMSR price calculations need updating to use N-outcome engine

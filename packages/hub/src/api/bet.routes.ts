@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
 import type { BetRequest, BetResponse } from './types.js';
-import { getPrice, getShares, getNewQuantities } from '../modules/lmsr/engine.js';
+import { getShares, getNewQuantities, getPrices } from '../modules/lmsr/engine.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
+import { eq } from 'drizzle-orm';
+import { marketCategories } from '../db/schema.js';
 
 export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post<{ Body: BetRequest }>('/api/bet', async (req, reply) => {
@@ -11,11 +13,6 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
     // Validate required fields
     if (!address || !marketId || !outcome || amount === undefined || !appSessionId || appSessionVersion === undefined) {
       return reply.status(400).send({ accepted: false, reason: 'Missing required fields' });
-    }
-
-    // Validate outcome
-    if (outcome !== 'BALL' && outcome !== 'STRIKE') {
-      return reply.status(400).send({ accepted: false, reason: 'Invalid outcome' });
     }
 
     // Validate amount
@@ -47,12 +44,30 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
       return { accepted: false, reason } as BetResponse;
     }
 
+    // Look up category to get outcomes array
+    const category = ctx.db.select().from(marketCategories)
+      .where(eq(marketCategories.id, market.categoryId))
+      .get();
+
+    const outcomes: string[] = category ? JSON.parse(category.outcomes) : [];
+
+    // Validate outcome against category outcomes
+    if (outcomes.length > 0 && !outcomes.includes(outcome)) {
+      return reply.status(400).send({ accepted: false, reason: 'Invalid outcome' });
+    }
+
+    // Find the outcome index for LMSR
+    const outcomeIndex = outcomes.indexOf(outcome);
+    if (outcomeIndex === -1) {
+      return reply.status(400).send({ accepted: false, reason: 'Invalid outcome' });
+    }
+
     // Calculate shares from LMSR
-    const shares = getShares(market.qBall, market.qStrike, market.b, outcome, amount);
-    const { qBall, qStrike } = getNewQuantities(market.qBall, market.qStrike, outcome, shares);
+    const shares = getShares(market.quantities, market.b, outcomeIndex, amount);
+    const newQuantities = getNewQuantities(market.quantities, outcomeIndex, shares);
 
     // Update market quantities
-    ctx.marketManager.updateQuantities(marketId, qBall, qStrike);
+    ctx.marketManager.updateQuantities(marketId, newQuantities);
 
     // Record position
     const timestamp = Date.now();
@@ -78,27 +93,30 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
     });
 
     // Compute new prices
-    const newPriceBall = getPrice(qBall, qStrike, market.b, 'BALL');
-    const newPriceStrike = getPrice(qBall, qStrike, market.b, 'STRIKE');
+    const prices = getPrices(newQuantities, market.b);
 
-    // Broadcast odds update
+    // Broadcast odds update (both new and backward-compat fields)
     ctx.ws.broadcast({
       type: 'ODDS_UPDATE',
-      priceBall: newPriceBall,
-      priceStrike: newPriceStrike,
-      qBall,
-      qStrike,
+      prices,
+      quantities: newQuantities,
+      outcomes,
       marketId,
+      // backward compat
+      priceBall: prices[0] ?? 0.5,
+      priceStrike: prices[1] ?? 0.5,
+      qBall: newQuantities[0] ?? 0,
+      qStrike: newQuantities[1] ?? 0,
     });
 
-    ctx.log.betPlaced(address, amount, outcome, marketId, shares, newPriceBall, newPriceStrike);
+    ctx.log.betPlaced(address, amount, outcome, marketId, shares, prices[0] ?? 0.5, prices[1] ?? 0.5);
     ctx.log.broadcast('ODDS_UPDATE', ctx.ws.getConnectionCount());
 
     return {
       accepted: true,
       shares,
-      newPriceBall,
-      newPriceStrike,
+      newPriceBall: prices[0] ?? 0.5,
+      newPriceStrike: prices[1] ?? 0.5,
     } as BetResponse;
   });
 }

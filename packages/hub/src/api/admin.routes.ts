@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
-import { MarketManager } from '../modules/market/manager.js';
-import { PositionTracker } from '../modules/position/tracker.js';
-import { getPrice } from '../modules/lmsr/engine.js';
+import { getPrices } from '../modules/lmsr/engine.js';
+import { sql, eq } from 'drizzle-orm';
+import { seedDefaults } from '../db/seed.js';
+import { marketCategories } from '../db/schema.js';
 
 interface PositionsParams {
   marketId: string;
@@ -12,19 +13,29 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: AppContext): void
   app.get('/api/admin/state', async () => {
     const market = ctx.marketManager.getCurrentMarket();
     let marketResp = null;
-    let priceBall = 0.5;
-    let priceStrike = 0.5;
+    let prices = [0.5, 0.5];
+    let outcomes: string[] = [];
 
     if (market) {
-      priceBall = getPrice(market.qBall, market.qStrike, market.b, 'BALL');
-      priceStrike = getPrice(market.qBall, market.qStrike, market.b, 'STRIKE');
+      prices = getPrices(market.quantities, market.b);
+
+      // Look up category outcomes
+      const category = ctx.db.select().from(marketCategories)
+        .where(eq(marketCategories.id, market.categoryId))
+        .get();
+      outcomes = category ? JSON.parse(category.outcomes) : [];
+
       marketResp = {
         id: market.id,
+        gameId: market.gameId,
+        categoryId: market.categoryId,
         status: market.status,
         outcome: market.outcome,
-        qBall: market.qBall,
-        qStrike: market.qStrike,
+        quantities: market.quantities,
         b: market.b,
+        // backward compat
+        qBall: market.quantities[0] ?? 0,
+        qStrike: market.quantities[1] ?? 0,
       };
     }
 
@@ -40,6 +51,11 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: AppContext): void
       positionCount: positions.length,
       connectionCount: ctx.ws.getConnectionCount(),
       sessionCounts: { open: openSessions, settled: settledSessions },
+      prices,
+      outcomes,
+      // backward compat
+      priceBall: prices[0] ?? 0.5,
+      priceStrike: prices[1] ?? 0.5,
     };
   });
 
@@ -47,9 +63,18 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: AppContext): void
     // Stop auto-play if running
     ctx.oracle.stopAutoPlay();
 
-    // Replace with fresh instances
-    ctx.marketManager = new MarketManager();
-    ctx.positionTracker = new PositionTracker();
+    // Truncate all data tables (order matters for FK constraints)
+    ctx.db.run(sql`DELETE FROM settlements`);
+    ctx.db.run(sql`DELETE FROM positions`);
+    ctx.db.run(sql`DELETE FROM markets`);
+    ctx.db.run(sql`DELETE FROM games`);
+    ctx.db.run(sql`DELETE FROM market_categories`);
+    ctx.db.run(sql`DELETE FROM sports`);
+    ctx.db.run(sql`DELETE FROM users`);
+
+    // Re-seed defaults
+    seedDefaults(ctx.db);
+
     ctx.oracle.reset();
     ctx.ws.clear();
 

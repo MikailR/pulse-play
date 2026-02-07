@@ -42,19 +42,29 @@ export class HubClient {
     return this.post('/api/oracle/game-state', { active });
   }
 
-  /** Open a new market. */
-  async openMarket(): Promise<{ market: { id: string; status: string } }> {
-    return this.post('/api/oracle/market/open', {});
+  /** Open a new market (requires game + category). */
+  async openMarket(gameId: string, categoryId: string): Promise<{ success: boolean; marketId: string }> {
+    return this.post('/api/oracle/market/open', { gameId, categoryId });
   }
 
   /** Close the current market. */
-  async closeMarket(): Promise<{ market: { id: string; status: string } }> {
+  async closeMarket(): Promise<{ success: boolean; marketId: string }> {
     return this.post('/api/oracle/market/close', {});
   }
 
   /** Resolve the market with an outcome. */
-  async resolveMarket(outcome: Outcome): Promise<{ market: { id: string; status: string; outcome: Outcome } }> {
+  async resolveMarket(outcome: Outcome): Promise<{ success: boolean; marketId: string; outcome: string; winners: number; losers: number; totalPayout: number }> {
     return this.post('/api/oracle/outcome', { outcome });
+  }
+
+  /** Create a game. */
+  async createGame(sportId: string, homeTeam: string, awayTeam: string): Promise<{ success: boolean; game: { id: string; status: string } }> {
+    return this.post('/api/games', { sportId, homeTeam, awayTeam });
+  }
+
+  /** Activate a game. */
+  async activateGame(gameId: string): Promise<{ success: boolean; game: { id: string; status: string } }> {
+    return this.post(`/api/games/${gameId}/activate`, {});
   }
 
   /** Get full admin state. */

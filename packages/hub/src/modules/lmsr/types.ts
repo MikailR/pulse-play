@@ -1,1 +1,1 @@
-export type Outcome = 'BALL' | 'STRIKE';
+export type Outcome = string;

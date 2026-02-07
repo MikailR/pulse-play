@@ -1,46 +1,52 @@
-import type { Outcome } from './types.js';
-
 /**
- * Cost function: C(q) = b * ln(e^(q_ball/b) + e^(q_strike/b))
+ * Cost function: C(q) = b * ln(sum_i(e^(q_i/b)))
  *
  * Uses the log-sum-exp trick for numerical stability:
- *   ln(e^a + e^b) = max(a,b) + ln(e^(a-max) + e^(b-max))
+ *   ln(sum(e^a_i)) = max(a) + ln(sum(e^(a_i - max)))
  */
-export function costFunction(qBall: number, qStrike: number, b: number): number {
-  const a = qBall / b;
-  const c = qStrike / b;
-  const max = Math.max(a, c);
-  return b * (max + Math.log(Math.exp(a - max) + Math.exp(c - max)));
+export function costFunction(quantities: number[], b: number): number {
+  const scaled = quantities.map((q) => q / b);
+  const max = Math.max(...scaled);
+  const sumExp = scaled.reduce((sum, s) => sum + Math.exp(s - max), 0);
+  return b * (max + Math.log(sumExp));
 }
 
 /**
- * Price for an outcome: p_i = e^(q_i/b) / (e^(q_ball/b) + e^(q_strike/b))
+ * Price for an outcome at index: p_i = e^(q_i/b) / sum_j(e^(q_j/b))
  *
  * Uses softmax with numerical stability trick.
  */
-export function getPrice(qBall: number, qStrike: number, b: number, outcome: Outcome): number {
-  const a = qBall / b;
-  const c = qStrike / b;
-  const max = Math.max(a, c);
-  const expA = Math.exp(a - max);
-  const expC = Math.exp(c - max);
-  const sum = expA + expC;
-  return outcome === 'BALL' ? expA / sum : expC / sum;
+export function getPrice(quantities: number[], b: number, outcomeIndex: number): number {
+  const scaled = quantities.map((q) => q / b);
+  const max = Math.max(...scaled);
+  const exps = scaled.map((s) => Math.exp(s - max));
+  const sum = exps.reduce((a, e) => a + e, 0);
+  return exps[outcomeIndex] / sum;
 }
 
 /**
- * Cost to buy `shares` of an outcome.
+ * All prices at once (more efficient than calling getPrice N times).
+ */
+export function getPrices(quantities: number[], b: number): number[] {
+  const scaled = quantities.map((q) => q / b);
+  const max = Math.max(...scaled);
+  const exps = scaled.map((s) => Math.exp(s - max));
+  const sum = exps.reduce((a, e) => a + e, 0);
+  return exps.map((e) => e / sum);
+}
+
+/**
+ * Cost to buy `shares` of an outcome at index.
  * cost = C(q_new) - C(q_old)
  */
 export function getCost(
-  qBall: number,
-  qStrike: number,
+  quantities: number[],
   b: number,
-  outcome: Outcome,
+  outcomeIndex: number,
   shares: number,
 ): number {
-  const { qBall: newQBall, qStrike: newQStrike } = getNewQuantities(qBall, qStrike, outcome, shares);
-  return costFunction(newQBall, newQStrike, b) - costFunction(qBall, qStrike, b);
+  const newQuantities = getNewQuantities(quantities, outcomeIndex, shares);
+  return costFunction(newQuantities, b) - costFunction(quantities, b);
 }
 
 /**
@@ -48,28 +54,26 @@ export function getCost(
  * Uses binary search since the cost function is monotonically increasing in shares.
  */
 export function getShares(
-  qBall: number,
-  qStrike: number,
+  quantities: number[],
   b: number,
-  outcome: Outcome,
+  outcomeIndex: number,
   cost: number,
 ): number {
   if (cost <= 0) return 0;
 
-  // Upper bound: in the best case (price ~ 0), you'd get at most cost/epsilon shares.
-  // A safe upper bound is cost * 2 / minPrice, but we can just use a generous bound.
+  // Upper bound: use current price as starting estimate
   let lo = 0;
-  let hi = cost / getPrice(qBall, qStrike, b, outcome) * 2;
+  let hi = cost / getPrice(quantities, b, outcomeIndex) * 2;
 
   // Ensure hi actually exceeds the target cost
-  while (getCost(qBall, qStrike, b, outcome, hi) < cost) {
+  while (getCost(quantities, b, outcomeIndex, hi) < cost) {
     hi *= 2;
   }
 
   // Binary search
   for (let i = 0; i < 100; i++) {
     const mid = (lo + hi) / 2;
-    const midCost = getCost(qBall, qStrike, b, outcome, mid);
+    const midCost = getCost(quantities, b, outcomeIndex, mid);
     if (Math.abs(midCost - cost) < 1e-10) {
       return mid;
     }
@@ -84,15 +88,12 @@ export function getShares(
 }
 
 /**
- * Updated quantities after purchasing shares of an outcome.
+ * Updated quantities after purchasing shares of an outcome at index.
  */
 export function getNewQuantities(
-  qBall: number,
-  qStrike: number,
-  outcome: Outcome,
+  quantities: number[],
+  outcomeIndex: number,
   shares: number,
-): { qBall: number; qStrike: number } {
-  return outcome === 'BALL'
-    ? { qBall: qBall + shares, qStrike }
-    : { qBall, qStrike: qStrike + shares };
+): number[] {
+  return quantities.map((q, i) => (i === outcomeIndex ? q + shares : q));
 }

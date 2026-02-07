@@ -292,8 +292,8 @@ describe('formatOutcomeShort', () => {
     expect(formatOutcomeShort('BALL')).toBe('BALL');
   });
 
-  it('returns STRK for STRIKE outcome', () => {
-    expect(formatOutcomeShort('STRIKE')).toBe('STRK');
+  it('returns STRI for STRIKE outcome', () => {
+    expect(formatOutcomeShort('STRIKE')).toBe('STRI');
   });
 });
 

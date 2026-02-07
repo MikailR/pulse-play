@@ -1,11 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { useMarket } from '@/providers/MarketProvider';
+import { useSelectedMarket } from '@/providers/SelectedMarketProvider';
 import { useWallet } from '@/providers/WagmiProvider';
 import { useBet } from '@/hooks/useBet';
 import { MM_ADDRESS } from '@/lib/config';
 import type { Outcome } from '@/lib/types';
+
+const OUTCOME_COLORS = [
+  { selected: 'bg-blue-500/20 border-blue-500 text-blue-400', unselected: 'border-gray-600 text-gray-400 hover:border-gray-500' },
+  { selected: 'bg-red-500/20 border-red-500 text-red-400', unselected: 'border-gray-600 text-gray-400 hover:border-gray-500' },
+  { selected: 'bg-green-500/20 border-green-500 text-green-400', unselected: 'border-gray-600 text-gray-400 hover:border-gray-500' },
+  { selected: 'bg-amber-500/20 border-amber-500 text-amber-400', unselected: 'border-gray-600 text-gray-400 hover:border-gray-500' },
+  { selected: 'bg-purple-500/20 border-purple-500 text-purple-400', unselected: 'border-gray-600 text-gray-400 hover:border-gray-500' },
+];
+
+function getOutcomeColor(index: number) {
+  return OUTCOME_COLORS[index % OUTCOME_COLORS.length];
+}
 
 interface BetFormProps {
   className?: string;
@@ -15,7 +27,7 @@ interface BetFormProps {
 const PRESET_AMOUNTS = [1, 5, 10, 25];
 
 export function BetForm({ className = '', onBetPlaced }: BetFormProps) {
-  const { market } = useMarket();
+  const { market, outcomes } = useSelectedMarket();
   const { address } = useWallet();
   const [amount, setAmount] = useState<string>('');
   const [selectedOutcome, setSelectedOutcome] = useState<Outcome | null>(null);
@@ -47,6 +59,8 @@ export function BetForm({ className = '', onBetPlaced }: BetFormProps) {
     return 'Processing...';
   };
 
+  const cols = outcomes.length <= 2 ? 'grid-cols-2' : outcomes.length === 3 ? 'grid-cols-3' : 'grid-cols-2';
+
   return (
     <div className={`bg-gray-800 rounded-lg p-6 ${className}`} data-testid="bet-form">
       <h2 className="text-lg font-semibold text-white mb-4">Place Bet</h2>
@@ -71,31 +85,24 @@ export function BetForm({ className = '', onBetPlaced }: BetFormProps) {
 
       <div className="mb-4">
         <label className="block text-sm text-gray-400 mb-2">Select Outcome</label>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setSelectedOutcome('BALL')}
-            disabled={!isMarketOpen}
-            className={`p-3 rounded-lg border transition-colors ${
-              selectedOutcome === 'BALL'
-                ? 'bg-blue-500/20 border-blue-500 text-blue-400'
-                : 'border-gray-600 text-gray-400 hover:border-gray-500 disabled:opacity-50'
-            }`}
-            data-testid="outcome-ball"
-          >
-            Ball
-          </button>
-          <button
-            onClick={() => setSelectedOutcome('STRIKE')}
-            disabled={!isMarketOpen}
-            className={`p-3 rounded-lg border transition-colors ${
-              selectedOutcome === 'STRIKE'
-                ? 'bg-red-500/20 border-red-500 text-red-400'
-                : 'border-gray-600 text-gray-400 hover:border-gray-500 disabled:opacity-50'
-            }`}
-            data-testid="outcome-strike"
-          >
-            Strike
-          </button>
+        <div className={`grid ${cols} gap-3`}>
+          {outcomes.map((outcome, i) => {
+            const color = getOutcomeColor(i);
+            const isSelected = selectedOutcome === outcome;
+            return (
+              <button
+                key={outcome}
+                onClick={() => setSelectedOutcome(outcome)}
+                disabled={!isMarketOpen}
+                className={`p-3 rounded-lg border transition-colors ${
+                  isSelected ? color.selected : `${color.unselected} disabled:opacity-50`
+                }`}
+                data-testid={`outcome-${outcome.toLowerCase()}`}
+              >
+                {outcome}
+              </button>
+            );
+          })}
         </div>
       </div>
 

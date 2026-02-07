@@ -1,9 +1,68 @@
 // Outcome type (matches hub)
-export type Outcome = 'BALL' | 'STRIKE';
+export type Outcome = string;
 
 // Market status (matches hub)
 export type MarketStatus = 'PENDING' | 'OPEN' | 'CLOSED' | 'RESOLVED';
 export type SessionStatus = 'open' | 'settling' | 'settled';
+
+// Game status (matches hub)
+export type GameStatus = 'SCHEDULED' | 'ACTIVE' | 'COMPLETED';
+
+// ── Domain Models ──
+
+export interface Sport {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: number;
+}
+
+export interface MarketCategory {
+  id: string;
+  sportId: string;
+  name: string;
+  outcomes: string[];
+  description: string | null;
+  createdAt: number;
+}
+
+export interface Game {
+  id: string;
+  sportId: string;
+  homeTeam: string;
+  awayTeam: string;
+  status: GameStatus;
+  startedAt: number | null;
+  completedAt: number | null;
+  metadata: string | null;
+  createdAt: number;
+}
+
+export interface UserStats {
+  address: string;
+  totalBets: number;
+  totalWins: number;
+  totalLosses: number;
+  totalWagered: number;
+  totalPayout: number;
+  netPnl: number;
+  firstSeenAt: number;
+  lastActiveAt: number;
+}
+
+export interface Settlement {
+  id: number;
+  marketId: string;
+  address: string;
+  outcome: string;
+  result: 'WIN' | 'LOSS';
+  shares: number;
+  costPaid: number;
+  payout: number;
+  profit: number;
+  appSessionId: string;
+  settledAt: number;
+}
 
 // ── Request DTOs ──
 
@@ -21,11 +80,19 @@ export interface GameStateRequest {
 }
 
 export interface MarketOpenRequest {
-  pitchId?: string;
+  gameId: string;
+  categoryId: string;
+}
+
+export interface MarketCloseRequest {
+  gameId?: string;
+  categoryId?: string;
 }
 
 export interface OutcomeRequest {
   outcome: Outcome;
+  gameId?: string;
+  categoryId?: string;
 }
 
 // ── Response DTOs ──
@@ -40,15 +107,22 @@ export interface BetResponse {
 
 export interface MarketData {
   id: string;
+  gameId: string;
+  categoryId: string;
   status: MarketStatus;
   outcome: Outcome | null;
+  quantities: number[];
+  b: number;
+  // backward compat
   qBall: number;
   qStrike: number;
-  b: number;
 }
 
 export interface MarketResponse {
   market: MarketData | null;
+  prices: number[];
+  outcomes: string[];
+  // backward compat
   priceBall: number;
   priceStrike: number;
 }
@@ -85,8 +159,10 @@ export interface MarketCloseResponse {
 
 export interface OutcomeResponse {
   success: boolean;
-  winners: string[];
-  losers: string[];
+  marketId: string;
+  outcome: string;
+  winners: number;
+  losers: number;
   totalPayout: number;
 }
 
@@ -96,17 +172,26 @@ export interface AdminStateResponse {
   positionCount: number;
   connectionCount: number;
   sessionCounts?: { open: number; settled: number };
+  prices: number[];
+  outcomes: string[];
+  // backward compat
+  priceBall: number;
+  priceStrike: number;
 }
 
 // ── WebSocket message types ──
 
 export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
+  prices: number[];
+  quantities: number[];
+  outcomes: string[];
+  marketId: string;
+  // backward compat
   priceBall: number;
   priceStrike: number;
   qBall: number;
   qStrike: number;
-  marketId: string;
 }
 
 export interface WsMarketStatus {

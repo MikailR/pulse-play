@@ -1,5 +1,5 @@
 import { buildApp } from '../app.js';
-import { createTestContext } from '../context.js';
+import { createTestContext, DEFAULT_TEST_GAME_ID } from '../context.js';
 import type { AppContext } from '../context.js';
 import type { FastifyInstance } from 'fastify';
 
@@ -25,11 +25,11 @@ describe('Admin Routes', () => {
   });
 
   test('returns full state with active market and positions', async () => {
-    ctx.marketManager.createMarket('m1');
-    ctx.marketManager.openMarket('m1');
+    const market = ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'pitching');
+    ctx.marketManager.openMarket(market.id);
     ctx.positionTracker.addPosition({
       address: '0xAlice',
-      marketId: 'm1',
+      marketId: market.id,
       outcome: 'BALL',
       shares: 5,
       costPaid: 2.5,
@@ -42,7 +42,7 @@ describe('Admin Routes', () => {
     const res = await app.inject({ method: 'GET', url: '/api/admin/state' });
     const body = res.json();
     expect(body.market).not.toBeNull();
-    expect(body.market.id).toBe('m1');
+    expect(body.market.id).toBe('test-game-pitching-1');
     expect(body.positionCount).toBe(1);
   });
 
@@ -53,8 +53,8 @@ describe('Admin Routes', () => {
   });
 
   test('reset clears all state to clean', async () => {
-    ctx.marketManager.createMarket('m1');
-    ctx.marketManager.openMarket('m1');
+    const market = ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'pitching');
+    ctx.marketManager.openMarket(market.id);
     ctx.oracle.setGameActive(true);
 
     await app.inject({ method: 'POST', url: '/api/admin/reset' });
@@ -63,6 +63,19 @@ describe('Admin Routes', () => {
     const body = res.json();
     expect(body.market).toBeNull();
     expect(body.gameState.active).toBe(false);
+  });
+
+  test('reset re-seeds sports and categories so new markets can be created', async () => {
+    await app.inject({ method: 'POST', url: '/api/admin/reset' });
+
+    // After reset, the game is gone but sports+categories are re-seeded.
+    // Re-create the game so we can create a new market.
+    ctx.gameManager.createGame('baseball', 'NYY', 'BOS', 'post-reset-game');
+
+    // Market sequence resets because all markets were deleted
+    const market = ctx.marketManager.createMarket('post-reset-game', 'pitching');
+    expect(market.id).toBe('post-reset-game-pitching-1');
+    expect(market.status).toBe('PENDING');
   });
 
   test('reset returns success', async () => {
@@ -87,9 +100,13 @@ describe('Admin Routes', () => {
     });
 
     test('returns positions for market', async () => {
+      // Create two markets so positions can reference them via FK
+      const m1 = ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'pitching');
+      const m2 = ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'pitching');
+
       ctx.positionTracker.addPosition({
         address: '0xAlice',
-        marketId: 'm1',
+        marketId: m1.id,
         outcome: 'BALL',
         shares: 5,
         costPaid: 2.5,
@@ -100,7 +117,7 @@ describe('Admin Routes', () => {
       });
       ctx.positionTracker.addPosition({
         address: '0xBob',
-        marketId: 'm1',
+        marketId: m1.id,
         outcome: 'STRIKE',
         shares: 3,
         costPaid: 1.5,
@@ -111,7 +128,7 @@ describe('Admin Routes', () => {
       });
       ctx.positionTracker.addPosition({
         address: '0xCharlie',
-        marketId: 'm2', // Different market
+        marketId: m2.id, // Different market
         outcome: 'BALL',
         shares: 10,
         costPaid: 5.0,
@@ -123,7 +140,7 @@ describe('Admin Routes', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: '/api/admin/positions/m1',
+        url: `/api/admin/positions/${m1.id}`,
       });
       expect(res.statusCode).toBe(200);
       const { positions } = res.json();
@@ -133,9 +150,11 @@ describe('Admin Routes', () => {
     });
 
     test('returns all position fields', async () => {
+      const market = ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'pitching');
+
       ctx.positionTracker.addPosition({
         address: '0xAlice',
-        marketId: 'm1',
+        marketId: market.id,
         outcome: 'BALL',
         shares: 5.5,
         costPaid: 2.75,
@@ -147,12 +166,12 @@ describe('Admin Routes', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: '/api/admin/positions/m1',
+        url: `/api/admin/positions/${market.id}`,
       });
       const { positions } = res.json();
       expect(positions[0]).toEqual({
         address: '0xAlice',
-        marketId: 'm1',
+        marketId: market.id,
         outcome: 'BALL',
         shares: 5.5,
         costPaid: 2.75,

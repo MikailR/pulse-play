@@ -26,7 +26,7 @@ interface UseBetReturn {
 
 export function useBet(options: UseBetOptions = {}): UseBetReturn {
   const { address, marketId, onSuccess, onError } = options;
-  const { createAppSession, status: clearnodeStatus } = useClearnode();
+  const { createAppSession, status: clearnodeStatus, refreshBalance } = useClearnode();
 
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<BetStep>('idle');
@@ -89,6 +89,7 @@ export function useBet(options: UseBetOptions = {}): UseBetReturn {
           onError?.(err);
         } else {
           onSuccess?.(response);
+          refreshBalance();
         }
 
         return response;
@@ -102,7 +103,7 @@ export function useBet(options: UseBetOptions = {}): UseBetReturn {
         setStep('idle');
       }
     },
-    [address, marketId, clearnodeStatus, createAppSession, onSuccess, onError]
+    [address, marketId, clearnodeStatus, createAppSession, refreshBalance, onSuccess, onError]
   );
 
   return {

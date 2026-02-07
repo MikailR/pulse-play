@@ -1,79 +1,116 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameControls } from './GameControls';
-import * as MarketProvider from '@/providers/MarketProvider';
 import * as api from '@/lib/api';
-
-jest.mock('@/providers/MarketProvider', () => ({
-  useMarket: jest.fn(),
-}));
+import type { Game } from '@/lib/types';
 
 jest.mock('@/lib/api');
 
-const mockUseMarket = MarketProvider.useMarket as jest.Mock;
-const mockSetGameState = api.setGameState as jest.MockedFunction<
-  typeof api.setGameState
->;
+const mockActivateGame = api.activateGame as jest.MockedFunction<typeof api.activateGame>;
+const mockCompleteGame = api.completeGame as jest.MockedFunction<typeof api.completeGame>;
+
+const activeGame: Game = {
+  id: 'game-1',
+  sportId: 'baseball',
+  homeTeam: 'Yankees',
+  awayTeam: 'Red Sox',
+  status: 'ACTIVE',
+  startedAt: Date.now(),
+  completedAt: null,
+  metadata: null,
+  createdAt: Date.now(),
+};
+
+const scheduledGame: Game = {
+  ...activeGame,
+  status: 'SCHEDULED',
+  startedAt: null,
+};
+
+const completedGame: Game = {
+  ...activeGame,
+  status: 'COMPLETED',
+  completedAt: Date.now(),
+};
 
 describe('GameControls', () => {
-  const mockRefetch = jest.fn();
+  const mockOnStateChanged = jest.fn();
 
   beforeEach(() => {
-    mockUseMarket.mockReturnValue({
-      gameActive: false,
-      refetch: mockRefetch,
-    });
-    mockSetGameState.mockReset();
-    mockRefetch.mockReset();
+    mockActivateGame.mockReset();
+    mockCompleteGame.mockReset();
+    mockOnStateChanged.mockReset();
   });
 
-  it('shows inactive status when game is not active', () => {
-    render(<GameControls />);
+  it('shows NO GAME when game is null', () => {
+    render(<GameControls game={null} onStateChanged={mockOnStateChanged} />);
 
-    expect(screen.getByTestId('game-status')).toHaveTextContent('INACTIVE');
-    expect(screen.getByTestId('game-toggle-button')).toHaveTextContent(
-      'Activate Game'
-    );
+    expect(screen.getByTestId('game-status')).toHaveTextContent('NO GAME');
   });
 
-  it('shows active status when game is active', () => {
-    mockUseMarket.mockReturnValue({
-      gameActive: true,
-      refetch: mockRefetch,
-    });
-
-    render(<GameControls />);
+  it('shows ACTIVE status when game is active', () => {
+    render(<GameControls game={activeGame} onStateChanged={mockOnStateChanged} />);
 
     expect(screen.getByTestId('game-status')).toHaveTextContent('ACTIVE');
-    expect(screen.getByTestId('game-toggle-button')).toHaveTextContent(
-      'Deactivate Game'
-    );
+  });
+
+  it('shows Activate button for SCHEDULED games', () => {
+    render(<GameControls game={scheduledGame} onStateChanged={mockOnStateChanged} />);
+
+    expect(screen.getByTestId('game-activate-button')).toHaveTextContent('Activate Game');
+  });
+
+  it('shows Complete button for ACTIVE games', () => {
+    render(<GameControls game={activeGame} onStateChanged={mockOnStateChanged} />);
+
+    expect(screen.getByTestId('game-complete-button')).toHaveTextContent('Complete Game');
   });
 
   it('activates game on button click', async () => {
     const user = userEvent.setup();
-    mockSetGameState.mockResolvedValueOnce({ success: true });
+    mockActivateGame.mockResolvedValueOnce({ success: true, game: activeGame });
 
-    render(<GameControls />);
+    render(<GameControls game={scheduledGame} onStateChanged={mockOnStateChanged} />);
 
-    await user.click(screen.getByTestId('game-toggle-button'));
+    await user.click(screen.getByTestId('game-activate-button'));
 
     await waitFor(() => {
-      expect(mockSetGameState).toHaveBeenCalledWith({ active: true });
+      expect(mockActivateGame).toHaveBeenCalledWith('game-1');
     });
-    expect(mockRefetch).toHaveBeenCalled();
+    expect(mockOnStateChanged).toHaveBeenCalled();
+  });
+
+  it('completes game on button click', async () => {
+    const user = userEvent.setup();
+    mockCompleteGame.mockResolvedValueOnce({ success: true, game: completedGame });
+
+    render(<GameControls game={activeGame} onStateChanged={mockOnStateChanged} />);
+
+    await user.click(screen.getByTestId('game-complete-button'));
+
+    await waitFor(() => {
+      expect(mockCompleteGame).toHaveBeenCalledWith('game-1');
+    });
+    expect(mockOnStateChanged).toHaveBeenCalled();
   });
 
   it('shows error on failure', async () => {
     const user = userEvent.setup();
-    mockSetGameState.mockRejectedValueOnce(new Error('Network error'));
+    mockCompleteGame.mockRejectedValueOnce(new Error('Network error'));
 
-    render(<GameControls />);
+    render(<GameControls game={activeGame} onStateChanged={mockOnStateChanged} />);
 
-    await user.click(screen.getByTestId('game-toggle-button'));
+    await user.click(screen.getByTestId('game-complete-button'));
 
     await waitFor(() => {
       expect(screen.getByTestId('game-error')).toHaveTextContent('Network error');
     });
+  });
+
+  it('shows completed message for COMPLETED games', () => {
+    render(<GameControls game={completedGame} onStateChanged={mockOnStateChanged} />);
+
+    expect(screen.getByTestId('game-status')).toHaveTextContent('COMPLETED');
+    expect(screen.getByText('Game has been completed.')).toBeInTheDocument();
   });
 });

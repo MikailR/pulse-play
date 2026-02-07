@@ -8,6 +8,7 @@ import type {
   GameStateResponse,
   MarketOpenRequest,
   MarketOpenResponse,
+  MarketCloseRequest,
   MarketCloseResponse,
   OutcomeRequest,
   OutcomeResponse,
@@ -15,6 +16,12 @@ import type {
   MMInfoResponse,
   MMFaucetResponse,
   UserFaucetResponse,
+  Sport,
+  MarketCategory,
+  Game,
+  UserStats,
+  Settlement,
+  Position,
 } from './types';
 
 // API Error class
@@ -53,9 +60,78 @@ export async function getMarket(): Promise<MarketResponse> {
   return handleResponse<MarketResponse>(response);
 }
 
+export async function getMarketById(marketId: string): Promise<MarketResponse> {
+  const response = await fetch(`${HUB_REST_URL}/api/market/${marketId}`);
+  return handleResponse<MarketResponse>(response);
+}
+
 export async function getPositions(address: string): Promise<PositionsResponse> {
   const response = await fetch(`${HUB_REST_URL}/api/positions/${address}`);
   return handleResponse<PositionsResponse>(response);
+}
+
+// ── Sport & Category Endpoints ──
+
+export async function getSports(): Promise<{ sports: Sport[] }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports`);
+  return handleResponse(response);
+}
+
+export async function getSportCategories(sportId: string): Promise<{ sportId: string; categories: MarketCategory[] }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports/${sportId}/categories`);
+  return handleResponse(response);
+}
+
+// ── Game Endpoints ──
+
+export async function getGames(filters?: { sportId?: string; status?: string }): Promise<{ games: Game[] }> {
+  const params = new URLSearchParams();
+  if (filters?.sportId) params.set('sportId', filters.sportId);
+  if (filters?.status) params.set('status', filters.status);
+  const qs = params.toString();
+  const response = await fetch(`${HUB_REST_URL}/api/games${qs ? `?${qs}` : ''}`);
+  return handleResponse(response);
+}
+
+export async function getGame(gameId: string): Promise<{ game: Game; markets: MarketResponse['market'][] }> {
+  const response = await fetch(`${HUB_REST_URL}/api/games/${gameId}`);
+  return handleResponse(response);
+}
+
+export async function createGame(
+  sportId: string,
+  homeTeam: string,
+  awayTeam: string,
+  id?: string
+): Promise<{ success: boolean; game: Game }> {
+  const response = await fetch(`${HUB_REST_URL}/api/games`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sportId, homeTeam, awayTeam, id }),
+  });
+  return handleResponse(response);
+}
+
+export async function activateGame(
+  gameId: string
+): Promise<{ success: boolean; game: Game }> {
+  const response = await fetch(`${HUB_REST_URL}/api/games/${gameId}/activate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  return handleResponse(response);
+}
+
+export async function completeGame(
+  gameId: string
+): Promise<{ success: boolean; game: Game }> {
+  const response = await fetch(`${HUB_REST_URL}/api/games/${gameId}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  return handleResponse(response);
 }
 
 // ── Oracle Endpoints ──
@@ -72,7 +148,7 @@ export async function setGameState(
 }
 
 export async function openMarket(
-  request: MarketOpenRequest = {}
+  request: MarketOpenRequest
 ): Promise<MarketOpenResponse> {
   const response = await fetch(`${HUB_REST_URL}/api/oracle/market/open`, {
     method: 'POST',
@@ -82,11 +158,13 @@ export async function openMarket(
   return handleResponse<MarketOpenResponse>(response);
 }
 
-export async function closeMarket(): Promise<MarketCloseResponse> {
+export async function closeMarket(
+  request?: MarketCloseRequest
+): Promise<MarketCloseResponse> {
   const response = await fetch(`${HUB_REST_URL}/api/oracle/market/close`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify(request ?? {}),
   });
   return handleResponse<MarketCloseResponse>(response);
 }
@@ -107,6 +185,29 @@ export async function resolveOutcome(
 export async function getAdminState(): Promise<AdminStateResponse> {
   const response = await fetch(`${HUB_REST_URL}/api/admin/state`);
   return handleResponse<AdminStateResponse>(response);
+}
+
+export async function getAdminPositions(marketId: string): Promise<{ positions: Position[] }> {
+  const response = await fetch(`${HUB_REST_URL}/api/admin/positions/${marketId}`);
+  return handleResponse(response);
+}
+
+// ── User Endpoints ──
+
+export async function getUserStats(address: string): Promise<{ user: UserStats }> {
+  const response = await fetch(`${HUB_REST_URL}/api/users/${address}`);
+  return handleResponse(response);
+}
+
+export async function getUserHistory(address: string): Promise<{ history: Settlement[] }> {
+  const response = await fetch(`${HUB_REST_URL}/api/users/${address}/history`);
+  return handleResponse(response);
+}
+
+export async function getLeaderboard(limit?: number): Promise<{ leaderboard: UserStats[] }> {
+  const qs = limit ? `?limit=${limit}` : '';
+  const response = await fetch(`${HUB_REST_URL}/api/leaderboard${qs}`);
+  return handleResponse(response);
 }
 
 // ── Market Maker Endpoints ──

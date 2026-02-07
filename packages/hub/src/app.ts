@@ -9,7 +9,13 @@ import { registerOracleRoutes } from './api/oracle.routes.js';
 import { registerFaucetRoutes } from './api/faucet.routes.js';
 import { registerAdminRoutes } from './api/admin.routes.js';
 import { registerMMRoutes } from './api/mm.routes.js';
+import { registerSportRoutes } from './api/sport.routes.js';
+import { registerGameRoutes } from './api/game.routes.js';
+import { registerUserRoutes } from './api/user.routes.js';
 import type { WsStateSync } from './api/types.js';
+import { getPrices } from './modules/lmsr/engine.js';
+import { eq } from 'drizzle-orm';
+import { marketCategories } from './db/schema.js';
 
 export async function buildApp(ctx: AppContext) {
   const app = Fastify({ logger: false });
@@ -43,16 +49,33 @@ export async function buildApp(ctx: AppContext) {
 
     // Send initial state sync to the new client
     const market = ctx.marketManager.getCurrentMarket();
-    const marketResp = market
-      ? {
-          id: market.id,
-          status: market.status,
-          outcome: market.outcome,
-          qBall: market.qBall,
-          qStrike: market.qStrike,
-          b: market.b,
-        }
-      : null;
+
+    let marketResp = null;
+    let prices = [0.5, 0.5];
+    let outcomes: string[] = [];
+
+    if (market) {
+      prices = getPrices(market.quantities, market.b);
+
+      // Look up category outcomes
+      const category = ctx.db.select().from(marketCategories)
+        .where(eq(marketCategories.id, market.categoryId))
+        .get();
+      outcomes = category ? JSON.parse(category.outcomes) : [];
+
+      marketResp = {
+        id: market.id,
+        gameId: market.gameId,
+        categoryId: market.categoryId,
+        status: market.status,
+        outcome: market.outcome,
+        quantities: market.quantities,
+        b: market.b,
+        // backward compat
+        qBall: market.quantities[0] ?? 0,
+        qStrike: market.quantities[1] ?? 0,
+      };
+    }
 
     const positions = market
       ? ctx.positionTracker.getPositionsByMarket(market.id)
@@ -69,6 +92,11 @@ export async function buildApp(ctx: AppContext) {
         positionCount: positions.length,
         connectionCount: ctx.ws.getConnectionCount(),
         sessionCounts: { open: openSessions, settled: settledSessions },
+        prices,
+        outcomes,
+        // backward compat
+        priceBall: prices[0] ?? 0.5,
+        priceStrike: prices[1] ?? 0.5,
       },
       positions,
     };
@@ -87,6 +115,9 @@ export async function buildApp(ctx: AppContext) {
   registerFaucetRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
   registerMMRoutes(app, ctx);
+  registerSportRoutes(app, ctx);
+  registerGameRoutes(app, ctx);
+  registerUserRoutes(app, ctx);
 
   return app;
 }

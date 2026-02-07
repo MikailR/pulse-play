@@ -2,10 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
 import type { GameStateRequest, OutcomeRequest } from './types.js';
 import type { Outcome } from '../modules/lmsr/types.js';
-import { getPrice } from '../modules/lmsr/engine.js';
+import { getPrices } from '../modules/lmsr/engine.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
-
-let marketCounter = 0;
+import { eq } from 'drizzle-orm';
+import { marketCategories } from '../db/schema.js';
 
 export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): void {
 
@@ -23,21 +23,29 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     return { success: true, active };
   });
 
-  app.post('/api/oracle/market/open', async (_req, reply) => {
-    if (!ctx.oracle.isActive()) {
+  app.post<{ Body: { gameId?: string; categoryId?: string } }>('/api/oracle/market/open', async (req, reply) => {
+    const { gameId, categoryId } = req.body ?? {} as any;
+    if (!gameId || !categoryId) {
+      return reply.status(400).send({ error: 'gameId and categoryId are required' });
+    }
+
+    // Validate game exists and is active
+    const game = ctx.gameManager.getGame(gameId);
+    if (!game) {
+      return reply.status(400).send({ error: `Game ${gameId} not found` });
+    }
+    if (game.status !== 'ACTIVE') {
       return reply.status(400).send({ error: 'Game is not active' });
     }
 
-    // Check if there's already an OPEN market
-    const current = ctx.marketManager.getCurrentMarket();
+    // Check if there's already an OPEN market for this stream
+    const current = ctx.marketManager.getCurrentMarket(gameId, categoryId);
     if (current && current.status === 'OPEN') {
       return reply.status(400).send({ error: 'A market is already OPEN' });
     }
 
-    marketCounter++;
-    const marketId = `market-${marketCounter}`;
-    ctx.marketManager.createMarket(marketId);
-    const market = ctx.marketManager.openMarket(marketId);
+    const created = ctx.marketManager.createMarket(gameId, categoryId);
+    const market = ctx.marketManager.openMarket(created.id);
 
     ctx.ws.broadcast({
       type: 'MARKET_STATUS',
@@ -45,16 +53,26 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       marketId: market.id,
     });
 
-    // Broadcast fresh 50/50 odds for the new market
-    const priceBall = getPrice(market.qBall, market.qStrike, market.b, 'BALL');
-    const priceStrike = getPrice(market.qBall, market.qStrike, market.b, 'STRIKE');
+    // Broadcast fresh equal odds for the new market
+    const prices = getPrices(market.quantities, market.b);
+
+    // Look up category outcomes
+    const category = ctx.db.select().from(marketCategories)
+      .where(eq(marketCategories.id, market.categoryId))
+      .get();
+    const outcomes: string[] = category ? JSON.parse(category.outcomes) : [];
+
     ctx.ws.broadcast({
       type: 'ODDS_UPDATE',
-      priceBall,
-      priceStrike,
-      qBall: market.qBall,
-      qStrike: market.qStrike,
+      prices,
+      quantities: market.quantities,
+      outcomes,
       marketId: market.id,
+      // backward compat
+      priceBall: prices[0] ?? 0.5,
+      priceStrike: prices[1] ?? 0.5,
+      qBall: market.quantities[0] ?? 0,
+      qStrike: market.quantities[1] ?? 0,
     });
 
     ctx.log.marketOpened(market.id);
@@ -63,8 +81,13 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     return { success: true, marketId: market.id };
   });
 
-  app.post('/api/oracle/market/close', async (_req, reply) => {
-    const current = ctx.marketManager.getCurrentMarket();
+  app.post<{ Body: { gameId?: string; categoryId?: string } }>('/api/oracle/market/close', async (req, reply) => {
+    const { gameId, categoryId } = req.body ?? {} as any;
+
+    const current = (gameId && categoryId)
+      ? ctx.marketManager.getCurrentMarket(gameId, categoryId)
+      : ctx.marketManager.getCurrentMarket();
+
     if (!current || current.status !== 'OPEN') {
       const reason = !current ? 'No market to close' : `Market is ${current.status}`;
       return reply.status(400).send({ error: reason });
@@ -84,16 +107,34 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     return { success: true, marketId: current.id };
   });
 
-  app.post<{ Body: OutcomeRequest }>('/api/oracle/outcome', async (req, reply) => {
-    const current = ctx.marketManager.getCurrentMarket();
+  app.post<{ Body: OutcomeRequest & { gameId?: string; categoryId?: string } }>('/api/oracle/outcome', async (req, reply) => {
+    const { gameId, categoryId } = req.body ?? {} as any;
+
+    const current = (gameId && categoryId)
+      ? ctx.marketManager.getCurrentMarket(gameId, categoryId)
+      : ctx.marketManager.getCurrentMarket();
+
     if (!current || current.status !== 'CLOSED') {
       const reason = !current ? 'No market to resolve' : `Market is ${current.status}`;
       return reply.status(400).send({ error: reason });
     }
 
     const { outcome } = req.body ?? {} as any;
-    if (outcome !== 'BALL' && outcome !== 'STRIKE') {
-      return reply.status(400).send({ error: 'Invalid outcome (must be BALL or STRIKE)' });
+
+    // Validate outcome against the market's category outcomes array
+    const category = ctx.db.select().from(marketCategories)
+      .where(eq(marketCategories.id, current.categoryId))
+      .get();
+
+    if (category) {
+      const outcomes: string[] = JSON.parse(category.outcomes);
+      if (!outcomes.includes(outcome)) {
+        return reply.status(400).send({
+          error: `Invalid outcome (must be one of: ${outcomes.join(', ')})`,
+        });
+      }
+    } else if (!outcome || typeof outcome !== 'string') {
+      return reply.status(400).send({ error: 'Invalid outcome' });
     }
 
     const positions = ctx.positionTracker.getPositionsByMarket(current.id);
@@ -215,7 +256,7 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       ctx.log.sendTo(winner.address, 'BET_RESULT:WIN');
     }
 
-    // Clear positions for this market
+    // Clear positions for this market (archives to settlements)
     ctx.positionTracker.clearPositions(current.id);
 
     // Broadcast market resolved
@@ -237,9 +278,4 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       totalPayout: result.totalPayout,
     };
   });
-}
-
-/** Reset market counter (for testing) */
-export function resetMarketCounter(): void {
-  marketCounter = 0;
 }

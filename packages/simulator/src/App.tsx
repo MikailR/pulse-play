@@ -209,11 +209,19 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         }
 
         case 'open': {
-          showStatus('Activating game & opening market...');
-          await hubClient.setGameState(true);
-          const res = await hubClient.openMarket();
-          setResults(null);
-          showStatus(`Market ${res.market.id} opened`);
+          setLoadingMessage('Creating game & opening market...');
+          try {
+            await hubClient.setGameState(true);
+            const gameRes = await hubClient.createGame('baseball', 'Demo Home', 'Demo Away');
+            await hubClient.activateGame(gameRes.game.id);
+            const res = await hubClient.openMarket(gameRes.game.id, 'pitching');
+            setResults(null);
+            setLoadingMessage(null);
+            showStatus(`Market ${res.marketId} opened`);
+          } catch (err) {
+            setLoadingMessage(null);
+            showStatus(`Open failed: ${(err as Error).message}`);
+          }
           break;
         }
 

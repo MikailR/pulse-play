@@ -4,9 +4,11 @@ export type MarketStatus = 'PENDING' | 'OPEN' | 'CLOSED' | 'RESOLVED';
 
 export interface Market {
   id: string;
+  gameId: string;
+  categoryId: string;
+  sequenceNum: number;
   status: MarketStatus;
-  qBall: number;
-  qStrike: number;
+  quantities: number[];
   b: number;
   outcome: Outcome | null;
   createdAt: number;

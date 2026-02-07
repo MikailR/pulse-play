@@ -1,31 +1,54 @@
 'use client';
 
 import { useState } from 'react';
-import { setGameState } from '@/lib/api';
-import { useMarket } from '@/providers/MarketProvider';
+import { activateGame, completeGame } from '@/lib/api';
+import type { Game } from '@/lib/types';
 
 interface GameControlsProps {
   className?: string;
+  game: Game | null;
+  onStateChanged?: () => void;
 }
 
-export function GameControls({ className = '' }: GameControlsProps) {
-  const { gameActive, refetch } = useMarket();
+export function GameControls({
+  className = '',
+  game,
+  onStateChanged,
+}: GameControlsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleToggle = async () => {
+  const handleActivate = async () => {
+    if (!game) return;
     setIsLoading(true);
     setError(null);
-
     try {
-      await setGameState({ active: !gameActive });
-      await refetch();
+      await activateGame(game.id);
+      onStateChanged?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update game state');
+      setError(err instanceof Error ? err.message : 'Failed to activate game');
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleComplete = async () => {
+    if (!game) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      await completeGame(game.id);
+      onStateChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to complete game');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const gameActive = game?.status === 'ACTIVE';
+  const canActivate = game?.status === 'SCHEDULED';
+  const canComplete = game?.status === 'ACTIVE';
 
   return (
     <div className={`bg-gray-800 rounded-lg p-6 ${className}`} data-testid="game-controls">
@@ -37,11 +60,13 @@ export function GameControls({ className = '' }: GameControlsProps) {
           className={`px-3 py-1 rounded text-sm font-medium ${
             gameActive
               ? 'bg-green-500/20 text-green-400'
+              : game?.status === 'COMPLETED'
+              ? 'bg-blue-500/20 text-blue-400'
               : 'bg-gray-600/50 text-gray-400'
           }`}
           data-testid="game-status"
         >
-          {gameActive ? 'ACTIVE' : 'INACTIVE'}
+          {game?.status ?? 'NO GAME'}
         </span>
       </div>
 
@@ -54,22 +79,37 @@ export function GameControls({ className = '' }: GameControlsProps) {
         </div>
       )}
 
-      <button
-        onClick={handleToggle}
-        disabled={isLoading}
-        className={`w-full py-3 rounded-lg font-medium transition-colors ${
-          gameActive
-            ? 'bg-red-600 hover:bg-red-700 text-white'
-            : 'bg-green-600 hover:bg-green-700 text-white'
-        } disabled:opacity-50 disabled:cursor-not-allowed`}
-        data-testid="game-toggle-button"
-      >
-        {isLoading
-          ? 'Updating...'
-          : gameActive
-          ? 'Deactivate Game'
-          : 'Activate Game'}
-      </button>
+      <div className="space-y-3">
+        {canActivate && (
+          <button
+            onClick={handleActivate}
+            disabled={isLoading}
+            className="w-full py-3 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            data-testid="game-activate-button"
+          >
+            {isLoading ? 'Updating...' : 'Activate Game'}
+          </button>
+        )}
+
+        {canComplete && (
+          <button
+            onClick={handleComplete}
+            disabled={isLoading}
+            className="w-full py-3 rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            data-testid="game-complete-button"
+          >
+            {isLoading ? 'Updating...' : 'Complete Game'}
+          </button>
+        )}
+
+        {game?.status === 'COMPLETED' && (
+          <p className="text-gray-500 text-sm text-center">Game has been completed.</p>
+        )}
+
+        {!game && (
+          <p className="text-gray-500 text-sm text-center">Select a game above.</p>
+        )}
+      </div>
     </div>
   );
 }

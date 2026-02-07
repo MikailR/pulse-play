@@ -17,9 +17,17 @@ jest.mock('@/providers/WebSocketProvider', () => ({
   })),
 }));
 
+const mockRefreshBalance = jest.fn();
+jest.mock('@/providers/ClearnodeProvider', () => ({
+  useClearnode: jest.fn(() => ({
+    refreshBalance: mockRefreshBalance,
+  })),
+}));
+
 describe('BetResultToast', () => {
   beforeEach(() => {
     subscribeHandler = null;
+    mockRefreshBalance.mockReset();
     jest.useFakeTimers();
   });
 
@@ -64,6 +72,21 @@ describe('BetResultToast', () => {
     expect(screen.getByTestId('toast-loss')).toBeInTheDocument();
     expect(screen.getByTestId('toast-title')).toHaveTextContent('You Lost');
     expect(screen.getByTestId('toast-amount')).toHaveTextContent('-$10.00');
+  });
+
+  it('calls refreshBalance on BET_RESULT', async () => {
+    render(<BetResultToast />);
+
+    await act(async () => {
+      subscribeHandler?.({
+        type: 'BET_RESULT',
+        result: 'WIN',
+        marketId: 'market-1',
+        payout: 10,
+      });
+    });
+
+    expect(mockRefreshBalance).toHaveBeenCalledTimes(1);
   });
 
   it('auto-removes toast after duration', async () => {

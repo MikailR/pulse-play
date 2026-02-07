@@ -55,12 +55,19 @@ export interface BetResponse {
 export interface MarketResponse {
   market: {
     id: string;
+    gameId: string;
+    categoryId: string;
     status: MarketStatus;
     outcome: Outcome | null;
+    quantities: number[];
+    b: number;
+    // backward compat
     qBall: number;
     qStrike: number;
-    b: number;
   } | null;
+  prices: number[];
+  outcomes: string[];
+  // backward compat
   priceBall: number;
   priceStrike: number;
 }
@@ -84,6 +91,12 @@ export interface AdminStateResponse {
   positionCount: number;
   connectionCount: number;
   sessionCounts: { open: number; settled: number };
+  // new fields
+  prices: number[];
+  outcomes: string[];
+  // backward compat
+  priceBall: number;
+  priceStrike: number;
 }
 
 // ── WebSocket message types ──
@@ -100,11 +113,15 @@ export type WsMessageType =
 
 export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
+  prices: number[];
+  quantities: number[];
+  outcomes: string[];
+  marketId: string;
+  // backward compat
   priceBall: number;
   priceStrike: number;
   qBall: number;
   qStrike: number;
-  marketId: string;
 }
 
 export interface WsMarketStatus {

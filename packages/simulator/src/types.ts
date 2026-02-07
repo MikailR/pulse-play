@@ -4,7 +4,7 @@ import type { Address, Hex } from 'viem';
 
 // ── Outcome / Market / Session ──
 
-export type Outcome = 'BALL' | 'STRIKE';
+export type Outcome = string;
 export type MarketStatus = 'PENDING' | 'OPEN' | 'CLOSED' | 'RESOLVED';
 export type SessionStatus = 'open' | 'settling' | 'settled';
 

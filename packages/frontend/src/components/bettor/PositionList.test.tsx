@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { PositionList } from './PositionList';
 import * as WagmiProvider from '@/providers/WagmiProvider';
-import * as MarketProvider from '@/providers/MarketProvider';
+import * as SelectedMarketProvider from '@/providers/SelectedMarketProvider';
 import * as WebSocketProvider from '@/providers/WebSocketProvider';
 import * as api from '@/lib/api';
 import { MockWebSocket, installMockWebSocket } from '@/test/mocks/websocket';
@@ -11,8 +11,8 @@ jest.mock('@/providers/WagmiProvider', () => ({
   useWallet: jest.fn(),
 }));
 
-jest.mock('@/providers/MarketProvider', () => ({
-  useMarket: jest.fn(),
+jest.mock('@/providers/SelectedMarketProvider', () => ({
+  useSelectedMarket: jest.fn(),
 }));
 
 jest.mock('@/providers/WebSocketProvider', () => ({
@@ -22,7 +22,7 @@ jest.mock('@/providers/WebSocketProvider', () => ({
 jest.mock('@/lib/api');
 
 const mockUseWallet = WagmiProvider.useWallet as jest.Mock;
-const mockUseMarket = MarketProvider.useMarket as jest.Mock;
+const mockUseSelectedMarket = SelectedMarketProvider.useSelectedMarket as jest.Mock;
 const mockUseWebSocket = WebSocketProvider.useWebSocket as jest.Mock;
 const mockGetPositions = api.getPositions as jest.MockedFunction<
   typeof api.getPositions
@@ -35,8 +35,9 @@ describe('PositionList', () => {
       address: '0x123',
       isConfigured: true,
     });
-    mockUseMarket.mockReturnValue({
+    mockUseSelectedMarket.mockReturnValue({
       market: { id: 'market-1', status: 'OPEN' },
+      outcomes: ['BALL', 'STRIKE'],
     });
     mockUseWebSocket.mockReturnValue({
       isConnected: true,
@@ -84,7 +85,7 @@ describe('PositionList', () => {
     });
   });
 
-  it('displays positions', async () => {
+  it('displays positions with correct outcome styling', async () => {
     mockGetPositions.mockResolvedValueOnce({
       positions: [
         {
@@ -94,6 +95,7 @@ describe('PositionList', () => {
           shares: 10.5,
           costPaid: 5.25,
           appSessionId: 'session-1',
+          appSessionVersion: 1,
           timestamp: Date.now(),
         },
       ],
@@ -108,5 +110,34 @@ describe('PositionList', () => {
     expect(screen.getByTestId('position-outcome')).toHaveTextContent('BALL');
     expect(screen.getByTestId('position-shares')).toHaveTextContent('10.50');
     expect(screen.getByTestId('position-cost')).toHaveTextContent('$5.25');
+
+    // BALL is index 0 → blue styling
+    expect(screen.getByTestId('position-outcome')).toHaveClass('text-blue-400');
+  });
+
+  it('applies correct colors for second outcome', async () => {
+    mockGetPositions.mockResolvedValueOnce({
+      positions: [
+        {
+          address: '0x123',
+          marketId: 'market-1',
+          outcome: 'STRIKE',
+          shares: 8.0,
+          costPaid: 4.0,
+          appSessionId: 'session-2',
+          appSessionVersion: 1,
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
+    render(<PositionList />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('position-outcome')).toHaveTextContent('STRIKE');
+    });
+
+    // STRIKE is index 1 → red styling
+    expect(screen.getByTestId('position-outcome')).toHaveClass('text-red-400');
   });
 });

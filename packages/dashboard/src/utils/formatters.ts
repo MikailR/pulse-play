@@ -128,14 +128,16 @@ export function getStatusColor(status: MarketStatus): string {
  * Returns a color for outcome
  */
 export function getOutcomeColor(outcome: Outcome): string {
-  return outcome === 'BALL' ? 'cyan' : 'magenta';
+  const outcomeA = ['BALL', 'MAKE', 'GOAL', 'HIT'];
+  return outcomeA.includes(outcome) ? 'cyan' : 'magenta';
 }
 
 /**
  * Formats outcome as a 4-char abbreviation
  */
 export function formatOutcomeShort(outcome: Outcome): string {
-  return outcome === 'BALL' ? 'BALL' : 'STRK';
+  if (outcome.length <= 4) return outcome;
+  return outcome.slice(0, 4).toUpperCase();
 }
 
 /**

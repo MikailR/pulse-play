@@ -1,20 +1,21 @@
 'use client';
 
-import { useMarket } from '@/providers/MarketProvider';
+import { useSelectedMarket } from '@/providers/SelectedMarketProvider';
 
 interface StateDisplayProps {
   className?: string;
+  gameActive?: boolean;
+  positionCount?: number;
+  connectionCount?: number;
 }
 
-export function StateDisplay({ className = '' }: StateDisplayProps) {
-  const {
-    market,
-    gameActive,
-    positionCount,
-    connectionCount,
-    isLoading,
-    error,
-  } = useMarket();
+export function StateDisplay({
+  className = '',
+  gameActive = false,
+  positionCount = 0,
+  connectionCount = 0,
+}: StateDisplayProps) {
+  const { market, outcomes, isLoading, error } = useSelectedMarket();
 
   if (isLoading) {
     return (
@@ -66,6 +67,15 @@ export function StateDisplay({ className = '' }: StateDisplayProps) {
             {market?.status || 'None'}
           </span>
         </div>
+
+        {outcomes.length > 0 && (
+          <div className="flex justify-between">
+            <span className="text-gray-400">Outcomes</span>
+            <span className="text-white" data-testid="state-outcomes">
+              {outcomes.join(', ')}
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-between">
           <span className="text-gray-400">Positions</span>

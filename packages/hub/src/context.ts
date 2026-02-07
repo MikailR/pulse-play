@@ -2,14 +2,21 @@ import { MarketManager } from './modules/market/manager.js';
 import { PositionTracker } from './modules/position/tracker.js';
 import { ClearnodeClient } from './modules/clearnode/client.js';
 import { OracleService } from './modules/oracle/oracle.js';
+import { GameManager } from './modules/game/manager.js';
+import { UserTracker } from './modules/user/tracker.js';
 import { WsManager } from './api/ws.js';
 import { logger as defaultLogger } from './logger.js';
+import { createTestDb, seedDefaults, type DrizzleDB } from './db/index.js';
+import { games } from './db/schema.js';
 
 export type Logger = typeof defaultLogger;
 
 export interface AppContext {
+  db: DrizzleDB;
   marketManager: MarketManager;
   positionTracker: PositionTracker;
+  gameManager: GameManager;
+  userTracker: UserTracker;
   clearnodeClient: ClearnodeClient;
   oracle: OracleService;
   ws: WsManager;
@@ -17,13 +24,34 @@ export interface AppContext {
 }
 
 /**
+ * Default game ID used by createTestContext for backward compatibility.
+ * Existing tests that don't care about multi-game can keep working without changes.
+ */
+export const DEFAULT_TEST_GAME_ID = 'test-game';
+export const DEFAULT_TEST_CATEGORY_ID = 'pitching';
+
+/**
  * Creates an AppContext suitable for testing.
- * Uses real MarketManager/PositionTracker/OracleService/WsManager
- * but a mocked ClearnodeClient.
+ * Uses real DB-backed MarketManager/PositionTracker/GameManager/UserTracker
+ * with an in-memory SQLite database, seeded with defaults + a default game.
+ * ClearnodeClient is mocked.
  */
 export function createTestContext(
   overrides: Partial<AppContext> = {},
 ): AppContext {
+  const db = createTestDb();
+  seedDefaults(db);
+
+  // Seed a default game for backward compatibility
+  db.insert(games).values({
+    id: DEFAULT_TEST_GAME_ID,
+    sportId: 'baseball',
+    homeTeam: 'NYY',
+    awayTeam: 'BOS',
+    status: 'ACTIVE',
+    createdAt: Date.now(),
+  }).run();
+
   const mockClearnode = {
     connect: jest.fn().mockResolvedValue(undefined),
     disconnect: jest.fn(),
@@ -39,8 +67,11 @@ export function createTestContext(
   } as unknown as ClearnodeClient;
 
   return {
-    marketManager: new MarketManager(),
-    positionTracker: new PositionTracker(),
+    db,
+    marketManager: new MarketManager(db),
+    positionTracker: new PositionTracker(db),
+    gameManager: new GameManager(db),
+    userTracker: new UserTracker(db),
     clearnodeClient: mockClearnode,
     oracle: new OracleService(),
     ws: new WsManager(),

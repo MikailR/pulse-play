@@ -37,10 +37,11 @@ describe('Header', () => {
     render(<Header />);
 
     expect(screen.getByTestId('logo')).toHaveTextContent('PulsePlay');
-    expect(screen.getByTestId('nav-bettor')).toHaveTextContent('Bettor');
+    expect(screen.getByTestId('nav-games')).toHaveTextContent('Games');
     expect(screen.getByTestId('nav-oracle')).toHaveTextContent('Oracle');
     expect(screen.getByTestId('nav-market-maker')).toHaveTextContent('Market Maker');
     expect(screen.getByTestId('nav-account')).toHaveTextContent('Account');
+    expect(screen.getByTestId('nav-admin')).toHaveTextContent('Admin');
   });
 
   it('shows WebSocket connection status', () => {

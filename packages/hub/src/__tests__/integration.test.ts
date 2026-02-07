@@ -1,9 +1,11 @@
 import { buildApp } from '../app.js';
-import { createTestContext } from '../context.js';
-import { resetMarketCounter } from '../api/oracle.routes.js';
+import { createTestContext, DEFAULT_TEST_GAME_ID, DEFAULT_TEST_CATEGORY_ID } from '../context.js';
 import type { AppContext } from '../context.js';
 import type { FastifyInstance } from 'fastify';
 import WebSocket from 'ws';
+
+const GAME_ID = DEFAULT_TEST_GAME_ID;
+const CATEGORY_ID = DEFAULT_TEST_CATEGORY_ID;
 
 describe('Integration Tests', () => {
   let app: FastifyInstance;
@@ -13,7 +15,6 @@ describe('Integration Tests', () => {
 
   beforeEach(async () => {
     openSockets = [];
-    resetMarketCounter();
     ctx = createTestContext();
     app = await buildApp(ctx);
     await app.listen({ port: 0 });
@@ -40,7 +41,7 @@ describe('Integration Tests', () => {
 
   async function activateAndOpen() {
     await post('/api/oracle/game-state', { active: true });
-    const res = await post('/api/oracle/market/open');
+    const res = await post('/api/oracle/market/open', { gameId: GAME_ID, categoryId: CATEGORY_ID });
     return res.json().marketId as string;
   }
 
@@ -57,11 +58,13 @@ describe('Integration Tests', () => {
 
   test('complete flow: open → bet → close → resolve winner', async () => {
     const marketId = await activateAndOpen();
+    expect(marketId).toBe('test-game-pitching-1');
+
     const betRes = await placeBet('0xAlice', marketId, 'BALL', 10);
     expect(betRes.json().accepted).toBe(true);
 
-    await post('/api/oracle/market/close');
-    const resolveRes = await post('/api/oracle/outcome', { outcome: 'BALL' });
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
+    const resolveRes = await post('/api/oracle/outcome', { outcome: 'BALL', gameId: GAME_ID, categoryId: CATEGORY_ID });
     const body = resolveRes.json();
     expect(body.success).toBe(true);
     expect(body.winners).toBe(1);
@@ -71,9 +74,9 @@ describe('Integration Tests', () => {
   test('complete flow: open → bet → close → resolve loser', async () => {
     const marketId = await activateAndOpen();
     await placeBet('0xAlice', marketId, 'BALL', 10);
-    await post('/api/oracle/market/close');
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
 
-    const resolveRes = await post('/api/oracle/outcome', { outcome: 'STRIKE' });
+    const resolveRes = await post('/api/oracle/outcome', { outcome: 'STRIKE', gameId: GAME_ID, categoryId: CATEGORY_ID });
     expect(resolveRes.json().winners).toBe(0);
     expect(resolveRes.json().losers).toBe(1);
   });
@@ -84,8 +87,8 @@ describe('Integration Tests', () => {
     await placeBet('0xBob', marketId, 'BALL', 5);
     await placeBet('0xCharlie', marketId, 'STRIKE', 8);
 
-    await post('/api/oracle/market/close');
-    const res = await post('/api/oracle/outcome', { outcome: 'BALL' });
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
+    const res = await post('/api/oracle/outcome', { outcome: 'BALL', gameId: GAME_ID, categoryId: CATEGORY_ID });
     const body = res.json();
     expect(body.winners).toBe(2);
     expect(body.losers).toBe(1);
@@ -110,12 +113,15 @@ describe('Integration Tests', () => {
 
   test('market cycles: resolve one market, open a new one', async () => {
     const mId1 = await activateAndOpen();
-    await post('/api/oracle/market/close');
-    await post('/api/oracle/outcome', { outcome: 'BALL' });
+    expect(mId1).toBe('test-game-pitching-1');
+
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
+    await post('/api/oracle/outcome', { outcome: 'BALL', gameId: GAME_ID, categoryId: CATEGORY_ID });
 
     // Open a second market
-    const res = await post('/api/oracle/market/open');
+    const res = await post('/api/oracle/market/open', { gameId: GAME_ID, categoryId: CATEGORY_ID });
     const mId2 = res.json().marketId;
+    expect(mId2).toBe('test-game-pitching-2');
     expect(mId2).not.toBe(mId1);
 
     const market = (await get('/api/market')).json();
@@ -131,8 +137,8 @@ describe('Integration Tests', () => {
     const before = (await get(`/api/positions/0xAlice`)).json();
     expect(before.positions).toHaveLength(1);
 
-    await post('/api/oracle/market/close');
-    await post('/api/oracle/outcome', { outcome: 'BALL' });
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
+    await post('/api/oracle/outcome', { outcome: 'BALL', gameId: GAME_ID, categoryId: CATEGORY_ID });
 
     const after = (await get(`/api/positions/0xAlice`)).json();
     expect(after.positions).toHaveLength(0);
@@ -145,11 +151,13 @@ describe('Integration Tests', () => {
     const marketId = await activateAndOpen();
     expect((await get('/api/market')).json().market.status).toBe('OPEN');
 
-    await post('/api/oracle/market/close');
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
     expect((await get('/api/market')).json().market.status).toBe('CLOSED');
 
-    await post('/api/oracle/outcome', { outcome: 'STRIKE' });
-    expect((await get('/api/market')).json().market.status).toBe('RESOLVED');
+    await post('/api/oracle/outcome', { outcome: 'STRIKE', gameId: GAME_ID, categoryId: CATEGORY_ID });
+    // After resolution, getCurrentMarket() excludes RESOLVED markets, so use the specific market endpoint
+    const resolved = (await get(`/api/market/${marketId}`)).json();
+    expect(resolved.market.status).toBe('RESOLVED');
   });
 
   test('reset clears everything and allows fresh start', async () => {
@@ -202,9 +210,9 @@ describe('Integration Tests', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     await post('/api/oracle/game-state', { active: true });
-    await post('/api/oracle/market/open');
-    await post('/api/oracle/market/close');
-    await post('/api/oracle/outcome', { outcome: 'BALL' });
+    await post('/api/oracle/market/open', { gameId: GAME_ID, categoryId: CATEGORY_ID });
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
+    await post('/api/oracle/outcome', { outcome: 'BALL', gameId: GAME_ID, categoryId: CATEGORY_ID });
 
     await new Promise((r) => setTimeout(r, 50));
     ws.close();
@@ -227,14 +235,14 @@ describe('Integration Tests', () => {
 
     // All 5 positions should be recorded
     const market = ctx.marketManager.getMarket(marketId)!;
-    expect(market.qBall).toBeGreaterThan(0);
-    expect(market.qStrike).toBeGreaterThan(0);
+    expect(market.quantities[0]).toBeGreaterThan(0);
+    expect(market.quantities[1]).toBeGreaterThan(0);
   });
 
   test('betting on a resolved market is rejected', async () => {
     const marketId = await activateAndOpen();
-    await post('/api/oracle/market/close');
-    await post('/api/oracle/outcome', { outcome: 'BALL' });
+    await post('/api/oracle/market/close', { gameId: GAME_ID, categoryId: CATEGORY_ID });
+    await post('/api/oracle/outcome', { outcome: 'BALL', gameId: GAME_ID, categoryId: CATEGORY_ID });
 
     const res = await placeBet('0xAlice', marketId, 'BALL', 10);
     expect(res.json().accepted).toBe(false);

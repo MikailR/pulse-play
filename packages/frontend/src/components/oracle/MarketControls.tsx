@@ -1,16 +1,38 @@
 'use client';
 
-import { useState } from 'react';
-import { openMarket, closeMarket, resolveOutcome } from '@/lib/api';
-import { useMarket } from '@/providers/MarketProvider';
+import { useState, useRef } from 'react';
+import { openMarket, closeMarket, resolveOutcome, createGame, activateGame } from '@/lib/api';
+import { useSelectedMarket } from '@/providers/SelectedMarketProvider';
 import type { Outcome } from '@/lib/types';
 
 interface MarketControlsProps {
   className?: string;
+  gameId?: string;
+  categoryId?: string;
+  outcomes?: string[];
+  gameActive?: boolean;
+  onMarketChanged?: () => void;
 }
 
-export function MarketControls({ className = '' }: MarketControlsProps) {
-  const { market, gameActive, refetch } = useMarket();
+const DEFAULT_CATEGORY_ID = 'pitching';
+
+const RESOLVE_COLORS = [
+  'bg-blue-600 hover:bg-blue-700',
+  'bg-red-600 hover:bg-red-700',
+  'bg-green-600 hover:bg-green-700',
+  'bg-amber-600 hover:bg-amber-700',
+  'bg-purple-600 hover:bg-purple-700',
+];
+
+export function MarketControls({
+  className = '',
+  gameId: propGameId,
+  categoryId: propCategoryId,
+  outcomes: propOutcomes,
+  gameActive: propGameActive,
+  onMarketChanged,
+}: MarketControlsProps) {
+  const { market, outcomes: contextOutcomes, refetch } = useSelectedMarket();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resolveResult, setResolveResult] = useState<{
@@ -19,13 +41,29 @@ export function MarketControls({ className = '' }: MarketControlsProps) {
     payout: number;
   } | null>(null);
 
+  const resolveOutcomes = propOutcomes ?? contextOutcomes;
+  const gameActive = propGameActive ?? true;
+
+  const gameIdRef = useRef<string | null>(propGameId ?? null);
+  const categoryId = propCategoryId ?? DEFAULT_CATEGORY_ID;
+
+  const ensureGame = async (): Promise<string> => {
+    if (gameIdRef.current) return gameIdRef.current;
+    const gameRes = await createGame('baseball', 'Demo Home', 'Demo Away');
+    await activateGame(gameRes.game.id);
+    gameIdRef.current = gameRes.game.id;
+    return gameRes.game.id;
+  };
+
   const handleOpenMarket = async () => {
     setIsLoading(true);
     setError(null);
     setResolveResult(null);
 
     try {
-      await openMarket({});
+      const gId = await ensureGame();
+      await openMarket({ gameId: gId, categoryId });
+      onMarketChanged?.();
       await refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to open market');
@@ -39,7 +77,12 @@ export function MarketControls({ className = '' }: MarketControlsProps) {
     setError(null);
 
     try {
-      await closeMarket();
+      await closeMarket(
+        propGameId && propCategoryId
+          ? { gameId: propGameId, categoryId: propCategoryId }
+          : undefined
+      );
+      onMarketChanged?.();
       await refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to close market');
@@ -53,12 +96,17 @@ export function MarketControls({ className = '' }: MarketControlsProps) {
     setError(null);
 
     try {
-      const result = await resolveOutcome({ outcome });
+      const result = await resolveOutcome(
+        propGameId && propCategoryId
+          ? { outcome, gameId: propGameId, categoryId: propCategoryId }
+          : { outcome }
+      );
       setResolveResult({
-        winners: result.winners.length,
-        losers: result.losers.length,
+        winners: result.winners,
+        losers: result.losers,
         payout: result.totalPayout,
       });
+      onMarketChanged?.();
       await refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resolve market');
@@ -70,6 +118,7 @@ export function MarketControls({ className = '' }: MarketControlsProps) {
   const canOpenMarket = gameActive && (!market || market.status === 'RESOLVED');
   const canCloseMarket = market?.status === 'OPEN';
   const canResolve = market?.status === 'CLOSED';
+  const cols = resolveOutcomes.length <= 2 ? 'grid-cols-2' : resolveOutcomes.length === 3 ? 'grid-cols-3' : 'grid-cols-2';
 
   return (
     <div className={`bg-gray-800 rounded-lg p-6 ${className}`} data-testid="market-controls">
@@ -131,23 +180,18 @@ export function MarketControls({ className = '' }: MarketControlsProps) {
           Close Market
         </button>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => handleResolve('BALL')}
-            disabled={!canResolve || isLoading}
-            className="py-3 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
-            data-testid="resolve-ball-button"
-          >
-            Resolve: Ball
-          </button>
-          <button
-            onClick={() => handleResolve('STRIKE')}
-            disabled={!canResolve || isLoading}
-            className="py-3 rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
-            data-testid="resolve-strike-button"
-          >
-            Resolve: Strike
-          </button>
+        <div className={`grid ${cols} gap-3`}>
+          {resolveOutcomes.map((outcome, i) => (
+            <button
+              key={outcome}
+              onClick={() => handleResolve(outcome)}
+              disabled={!canResolve || isLoading}
+              className={`py-3 rounded-lg font-medium ${RESOLVE_COLORS[i % RESOLVE_COLORS.length]} text-white disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors`}
+              data-testid={`resolve-${outcome.toLowerCase()}-button`}
+            >
+              Resolve: {outcome}
+            </button>
+          ))}
         </div>
       </div>
     </div>

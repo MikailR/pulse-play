@@ -1,24 +1,22 @@
 import { render, screen } from '@testing-library/react';
 import { StateDisplay } from './StateDisplay';
-import * as MarketProvider from '@/providers/MarketProvider';
+import * as SelectedMarketProvider from '@/providers/SelectedMarketProvider';
 
-jest.mock('@/providers/MarketProvider', () => ({
-  useMarket: jest.fn(),
+jest.mock('@/providers/SelectedMarketProvider', () => ({
+  useSelectedMarket: jest.fn(),
 }));
 
-const mockUseMarket = MarketProvider.useMarket as jest.Mock;
+const mockUseSelectedMarket = SelectedMarketProvider.useSelectedMarket as jest.Mock;
 
 describe('StateDisplay', () => {
   beforeEach(() => {
-    mockUseMarket.mockReset();
+    mockUseSelectedMarket.mockReset();
   });
 
   it('shows loading state when isLoading is true', () => {
-    mockUseMarket.mockReturnValue({
+    mockUseSelectedMarket.mockReturnValue({
       market: null,
-      gameActive: false,
-      positionCount: 0,
-      connectionCount: 0,
+      outcomes: [],
       isLoading: true,
       error: null,
     });
@@ -29,11 +27,9 @@ describe('StateDisplay', () => {
   });
 
   it('shows error state when error exists', () => {
-    mockUseMarket.mockReturnValue({
+    mockUseSelectedMarket.mockReturnValue({
       market: null,
-      gameActive: false,
-      positionCount: 0,
-      connectionCount: 0,
+      outcomes: [],
       isLoading: false,
       error: 'Network error',
     });
@@ -44,24 +40,27 @@ describe('StateDisplay', () => {
     expect(screen.getByTestId('state-error')).toHaveTextContent('Network error');
   });
 
-  it('displays system state from context', () => {
-    mockUseMarket.mockReturnValue({
+  it('displays system state from context and props', () => {
+    mockUseSelectedMarket.mockReturnValue({
       market: {
         id: 'market-1',
         status: 'OPEN',
         outcome: null,
-        qBall: 0,
-        qStrike: 0,
+        quantities: [0, 0],
         b: 100,
       },
-      gameActive: true,
-      positionCount: 5,
-      connectionCount: 3,
+      outcomes: ['BALL', 'STRIKE'],
       isLoading: false,
       error: null,
     });
 
-    render(<StateDisplay />);
+    render(
+      <StateDisplay
+        gameActive={true}
+        positionCount={5}
+        connectionCount={3}
+      />
+    );
 
     expect(screen.getByTestId('state-display')).toBeInTheDocument();
     expect(screen.getByTestId('state-game-active')).toHaveTextContent('Yes');
@@ -69,19 +68,18 @@ describe('StateDisplay', () => {
     expect(screen.getByTestId('state-market-status')).toHaveTextContent('OPEN');
     expect(screen.getByTestId('state-position-count')).toHaveTextContent('5');
     expect(screen.getByTestId('state-connection-count')).toHaveTextContent('3');
+    expect(screen.getByTestId('state-outcomes')).toHaveTextContent('BALL, STRIKE');
   });
 
   it('shows game inactive state', () => {
-    mockUseMarket.mockReturnValue({
+    mockUseSelectedMarket.mockReturnValue({
       market: null,
-      gameActive: false,
-      positionCount: 0,
-      connectionCount: 1,
+      outcomes: [],
       isLoading: false,
       error: null,
     });
 
-    render(<StateDisplay />);
+    render(<StateDisplay gameActive={false} connectionCount={1} />);
 
     expect(screen.getByTestId('state-game-active')).toHaveTextContent('No');
     expect(screen.getByTestId('state-market-id')).toHaveTextContent('-');

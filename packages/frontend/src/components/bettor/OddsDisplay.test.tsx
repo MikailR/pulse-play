@@ -1,27 +1,27 @@
 import { render, screen } from '@testing-library/react';
 import { OddsDisplay } from './OddsDisplay';
-import * as MarketProvider from '@/providers/MarketProvider';
+import * as SelectedMarketProvider from '@/providers/SelectedMarketProvider';
 
-jest.mock('@/providers/MarketProvider', () => ({
-  useMarket: jest.fn(),
+jest.mock('@/providers/SelectedMarketProvider', () => ({
+  useSelectedMarket: jest.fn(),
 }));
 
-const mockUseMarket = MarketProvider.useMarket as jest.Mock;
+const mockUseSelectedMarket = SelectedMarketProvider.useSelectedMarket as jest.Mock;
 
 describe('OddsDisplay', () => {
   beforeEach(() => {
-    mockUseMarket.mockReturnValue({
-      priceBall: 0.5,
-      priceStrike: 0.5,
+    mockUseSelectedMarket.mockReturnValue({
+      prices: [0.5, 0.5],
+      outcomes: ['BALL', 'STRIKE'],
       market: { id: 'market-1', status: 'OPEN' },
       isLoading: false,
     });
   });
 
   it('shows loading state', () => {
-    mockUseMarket.mockReturnValue({
-      priceBall: 0.5,
-      priceStrike: 0.5,
+    mockUseSelectedMarket.mockReturnValue({
+      prices: [0.5, 0.5],
+      outcomes: ['BALL', 'STRIKE'],
       market: null,
       isLoading: true,
     });
@@ -31,10 +31,10 @@ describe('OddsDisplay', () => {
     expect(screen.getByTestId('odds-loading')).toBeInTheDocument();
   });
 
-  it('displays ball and strike prices as percentages', () => {
-    mockUseMarket.mockReturnValue({
-      priceBall: 0.6,
-      priceStrike: 0.4,
+  it('displays prices as percentages for 2 outcomes', () => {
+    mockUseSelectedMarket.mockReturnValue({
+      prices: [0.6, 0.4],
+      outcomes: ['BALL', 'STRIKE'],
       market: { id: 'market-1', status: 'OPEN' },
       isLoading: false,
     });
@@ -52,9 +52,9 @@ describe('OddsDisplay', () => {
   });
 
   it('shows NO MARKET when market is null', () => {
-    mockUseMarket.mockReturnValue({
-      priceBall: 0.5,
-      priceStrike: 0.5,
+    mockUseSelectedMarket.mockReturnValue({
+      prices: [0.5, 0.5],
+      outcomes: ['BALL', 'STRIKE'],
       market: null,
       isLoading: false,
     });
@@ -62,5 +62,39 @@ describe('OddsDisplay', () => {
     render(<OddsDisplay />);
 
     expect(screen.getByTestId('market-status-badge')).toHaveTextContent('NO MARKET');
+  });
+
+  it('renders 3-outcome market dynamically', () => {
+    mockUseSelectedMarket.mockReturnValue({
+      prices: [0.4, 0.35, 0.25],
+      outcomes: ['MAKE', 'MISS', 'FOUL'],
+      market: { id: 'market-2', status: 'OPEN' },
+      isLoading: false,
+    });
+
+    render(<OddsDisplay />);
+
+    expect(screen.getByTestId('odds-make')).toBeInTheDocument();
+    expect(screen.getByTestId('odds-miss')).toBeInTheDocument();
+    expect(screen.getByTestId('odds-foul')).toBeInTheDocument();
+    expect(screen.getByTestId('price-make-percent')).toHaveTextContent('40.0%');
+    expect(screen.getByTestId('price-miss-percent')).toHaveTextContent('35.0%');
+    expect(screen.getByTestId('price-foul-percent')).toHaveTextContent('25.0%');
+  });
+
+  it('displays American odds correctly', () => {
+    mockUseSelectedMarket.mockReturnValue({
+      prices: [0.6, 0.4],
+      outcomes: ['BALL', 'STRIKE'],
+      market: { id: 'market-1', status: 'OPEN' },
+      isLoading: false,
+    });
+
+    render(<OddsDisplay />);
+
+    // 0.6 → -150 (favorite)
+    expect(screen.getByTestId('price-ball-american')).toHaveTextContent('-150');
+    // 0.4 → +150 (underdog)
+    expect(screen.getByTestId('price-strike-american')).toHaveTextContent('+150');
   });
 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useWebSocket } from '@/providers/WebSocketProvider';
+import { useClearnode } from '@/providers/ClearnodeProvider';
 
 interface Toast {
   id: string;
@@ -15,6 +16,7 @@ interface BetResultToastProps {
 
 export function BetResultToast({ duration = 5000 }: BetResultToastProps) {
   const { subscribe } = useWebSocket();
+  const { refreshBalance } = useClearnode();
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => {
@@ -27,13 +29,16 @@ export function BetResultToast({ duration = 5000 }: BetResultToastProps) {
         };
         setToasts((prev) => [...prev, toast]);
 
+        // Refresh balance after settlement
+        refreshBalance();
+
         // Auto-remove toast after duration
         setTimeout(() => {
           setToasts((prev) => prev.filter((t) => t.id !== toast.id));
         }, duration);
       }
     });
-  }, [subscribe, duration]);
+  }, [subscribe, duration, refreshBalance]);
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

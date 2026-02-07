@@ -22,9 +22,9 @@ export function Header() {
               className={`text-sm ${
                 pathname === '/' ? 'text-white' : 'text-gray-400 hover:text-white'
               }`}
-              data-testid="nav-bettor"
+              data-testid="nav-games"
             >
-              Bettor
+              Games
             </Link>
             <Link
               href="/oracle"
@@ -52,6 +52,15 @@ export function Header() {
               data-testid="nav-account"
             >
               Account
+            </Link>
+            <Link
+              href="/admin"
+              className={`text-sm ${
+                pathname === '/admin' ? 'text-white' : 'text-gray-400 hover:text-white'
+              }`}
+              data-testid="nav-admin"
+            >
+              Admin
             </Link>
           </nav>
         </div>

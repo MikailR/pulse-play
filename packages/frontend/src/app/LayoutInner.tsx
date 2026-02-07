@@ -3,7 +3,6 @@
 import { WagmiProvider, useWallet } from '@/providers/WagmiProvider';
 import { ClearnodeProvider } from '@/providers/ClearnodeProvider';
 import { WebSocketProvider } from '@/providers/WebSocketProvider';
-import { MarketProvider } from '@/providers/MarketProvider';
 import { Header } from '@/components/Header';
 import { BetResultToast } from '@/components/bettor/BetResultToast';
 
@@ -13,10 +12,8 @@ function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ClearnodeProvider>
       <WebSocketProvider address={address}>
-        <MarketProvider>
-          {children}
-          <BetResultToast />
-        </MarketProvider>
+        {children}
+        <BetResultToast />
       </WebSocketProvider>
     </ClearnodeProvider>
   );
