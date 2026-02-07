@@ -71,6 +71,7 @@ pnpm test:watch
 | `:reconnect` | Reconnect WebSocket |
 | `:games` | List all games in event log |
 | `:sports` | List all sports + categories in event log |
+| `:markets` | Browse all markets (overlay) |
 | `:quit` / `:q` | Quit simulator |
 
 ### Navigation
@@ -79,6 +80,7 @@ pnpm test:watch
 |---|---|
 | `Tab` | Cycle active panel (Wallets → Positions → Event Log) |
 | `j` / `k` | Scroll active panel down / up |
+| `Enter` / `e` | Expand / collapse position detail |
 | `g` / `G` | Scroll to top / bottom |
 | `?` | Toggle help overlay |
 | `:` | Enter command mode |
@@ -106,6 +108,16 @@ pnpm test:watch
 | `delayMinMs` | `1500` | Minimum delay between bets (ms) |
 | `delayMaxMs` | `4000` | Maximum delay between bets (ms) |
 | `maxBetsPerWallet` | `3` | Max bets per wallet per simulation |
+
+### Usage Examples
+
+```bash
+:sim config                          # view current config
+:sim config maxBetsPerWallet=5       # update one value
+:sim config outcomeBias=0.7 betAmountMax=10  # update multiple
+```
+
+> **Note:** Config is baked into wallet profiles at `:sim start` time. To apply changes mid-session: `:sim stop` → `:sim config key=val` → `:sim start`.
 
 ## Architecture
 

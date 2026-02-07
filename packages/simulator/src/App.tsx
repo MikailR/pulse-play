@@ -10,7 +10,7 @@ import { CommandBar } from './components/CommandBar.js';
 
 import { HelpOverlay } from './components/HelpOverlay.js';
 import { MarketsOverlay } from './components/MarketsOverlay.js';
-import { PositionsPanel } from './components/PositionsPanel.js';
+import { PositionsPanel, EXPANDED_LINES } from './components/PositionsPanel.js';
 import { SystemInfo } from './components/SystemInfo.js';
 import { WalletManager } from './core/wallet-manager.js';
 import { HubClient } from './core/hub-client.js';
@@ -82,9 +82,11 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
 
   const userScrolledRef = useRef(false);
   const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const outcomesRef = useRef(outcomes);
+  useEffect(() => { outcomesRef.current = outcomes; }, [outcomes]);
 
   // WebSocket connection
-  const { connected, lastMessage, error: wsError, reconnect } = useWebSocket(wsUrl);
+  const { connected, messageQueue, queueVersion, error: wsError, reconnect } = useWebSocket(wsUrl);
 
   // Layout calculations — all panels visible
   // Header=1, MarketPanel~5, CommandBar=1 → ~7 fixed rows
@@ -92,7 +94,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
   const positionsHeight = Math.max(Math.floor(mainHeight * 0.5), 4);
   const eventLogHeight = Math.max(mainHeight - positionsHeight, 4);
   const walletsVisibleCount = Math.max(mainHeight - 5, 1);
-  const positionsVisibleCount = Math.max(positionsHeight - 5, 1);
+  const positionsVisibleCount = Math.max(positionsHeight - 6, 1);
   const eventLogVisibleCount = Math.max(eventLogHeight - 2, 1);
   const barWidth = Math.max(Math.floor(columns * 0.5) - 6, 10);
   const leftPanelWidth = Math.max(Math.floor(columns * 0.5) - 4, 10);
@@ -119,9 +121,6 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
       const next = [...prev, entry];
       return next.length > MAX_EVENT_LOG_SIZE ? next.slice(-MAX_EVENT_LOG_SIZE) : next;
     });
-    if (!userScrolledRef.current) {
-      setEventLogScrollOffset(Number.MAX_SAFE_INTEGER);
-    }
   }, []);
 
   // Wire up sim engine events
@@ -582,9 +581,15 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         setPositionsSelectedIndex(maxIndex);
         setPositionsScrollOffset(Math.max(0, positions.length - positionsVisibleCount));
       } else if (key.return || input === 'e') {
-        setPositionsExpandedIndex((prev) =>
-          prev === positionsSelectedIndex ? null : positionsSelectedIndex
-        );
+        const isCollapsing = positionsExpandedIndex === positionsSelectedIndex;
+        setPositionsExpandedIndex(isCollapsing ? null : positionsSelectedIndex);
+        // When expanding, ensure the selected position stays within the effective visible range
+        if (!isCollapsing) {
+          const effectiveCount = Math.max(positionsVisibleCount - EXPANDED_LINES, 1);
+          if (positionsSelectedIndex >= positionsScrollOffset + effectiveCount) {
+            setPositionsScrollOffset(positionsSelectedIndex - effectiveCount + 1);
+          }
+        }
       }
     } else {
       const maxOffset = Math.max(0, events.length - eventLogVisibleCount);
@@ -621,7 +626,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           if (isNew) {
             setPositions([]);
             setPositionsScrollOffset(0);
-            const n = outcomes.length || 2;
+            const n = outcomesRef.current.length || 2;
             setPrices(Array(n).fill(1 / n));
             setQuantities(Array(n).fill(0));
             return {
@@ -631,7 +636,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
                 status: msg.status,
                 outcome: msg.outcome ?? null,
                 quantities: Array(n).fill(0),
-                outcomes: outcomes.length ? outcomes : ['BALL', 'STRIKE'],
+                outcomes: outcomesRef.current.length ? outcomesRef.current : ['BALL', 'STRIKE'],
                 b: 100,
               },
               positionCount: 0,
@@ -718,7 +723,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         }
         break;
     }
-  }, [walletManager, clearnodePool, outcomes, refreshMMBalance]);
+  }, [walletManager, clearnodePool, refreshMMBalance]);
 
   // Compute results from local positions state (avoids race with hub clearing positions)
   const computeResults = useCallback((marketId: string, outcome: string, localPositions: Position[]) => {
@@ -749,15 +754,16 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     });
   }, [walletManager]);
 
-  // Handle incoming WebSocket messages
+  // Drain WebSocket message queue
   useEffect(() => {
-    if (lastMessage) {
-      if (lastMessage.type !== 'STATE_SYNC' && lastMessage.type !== 'CONNECTION_COUNT') {
-        addEvent(lastMessage.type, formatWsMessage(lastMessage), lastMessage);
+    const pending = messageQueue.current!.splice(0);
+    for (const msg of pending) {
+      if (msg.type !== 'STATE_SYNC' && msg.type !== 'CONNECTION_COUNT') {
+        addEvent(msg.type, formatWsMessage(msg), msg);
       }
-      processMessage(lastMessage);
+      processMessage(msg);
     }
-  }, [lastMessage, processMessage, addEvent]);
+  }, [queueVersion, processMessage, addEvent, messageQueue]);
 
   // Clamp event log scroll
   useEffect(() => {
@@ -830,40 +836,24 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
                 wsError={wsError}
                 state={adminState}
               />
+              <MarketPanel
+                state={adminState}
+                prices={prices}
+                outcomes={outcomes}
+                quantities={quantities}
+                barWidth={barWidth}
+                betCount={totalBets}
+                mmBalance={mmBalance}
+                results={results}
+              />
               <WalletTable
                 wallets={wallets}
                 scrollOffset={walletsScrollOffset}
                 visibleCount={walletsVisibleCount}
                 isActive={activePanel === 'wallets'}
               />
-              {/* <Box flexGrow={1}> */}
-                <MarketPanel
-                  state={adminState}
-                  prices={prices}
-                  outcomes={outcomes}
-                  quantities={quantities}
-                  barWidth={barWidth}
-                  betCount={totalBets}
-                  mmBalance={mmBalance}
-                  results={results}
-                />
-              {/* </Box> */}
             </Box>
           </Box>
-
-          {/* MarketPanel: full-width compact bar */}
-          {/* <Box flexShrink={0}>
-            <MarketPanel
-              state={adminState}
-              prices={prices}
-              outcomes={outcomes}
-              quantities={quantities}
-              barWidth={barWidth}
-              betCount={totalBets}
-              mmBalance={mmBalance}
-              results={results}
-            />
-          </Box> */}
         </Box>
       )}
 

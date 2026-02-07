@@ -9,6 +9,10 @@ interface MarketsOverlayProps {
   height: number;
 }
 
+function truncateId(id: string, len = 40): string {
+  return id.length > len ? id.slice(0, len) + '..' : id;
+}
+
 export function MarketsOverlay({ markets, selectedIndex, height }: MarketsOverlayProps) {
   const headerLines = 5; // title + separator + header + separator + footer hint
   const visibleCount = Math.max(height - headerLines, 3);
@@ -27,17 +31,17 @@ export function MarketsOverlay({ markets, selectedIndex, height }: MarketsOverla
         <Text bold color="cyan">MARKETS ({markets.length})</Text>
       </Box>
       <Box alignSelf="center">
-        <Text color="gray">{'─'.repeat(60)}</Text>
+        <Text color="gray">{'─'.repeat(86)}</Text>
       </Box>
 
       {/* Column headers */}
       <Box>
         <Text color="gray" bold>
           {'  '}
-          {'ID'.padEnd(28)}
-          {'GAME'.padEnd(16)}
-          {'CATEGORY'.padEnd(12)}
-          {'STATUS'.padEnd(10)}
+          {'GAME'.padEnd(40)}
+          {'ID'.padEnd(50)}
+          {'CATEGORY'.padEnd(14)}
+          {'STATUS'.padEnd(12)}
           {'OUTCOME'}
         </Text>
       </Box>
@@ -49,17 +53,17 @@ export function MarketsOverlay({ markets, selectedIndex, height }: MarketsOverla
           return (
             <Box key={m.id}>
               <Text color="cyan" bold>{isSelected ? '> ' : '  '}</Text>
+              <Text color="gray" inverse={isSelected}>
+                {truncateId(m.gameId).padEnd(40)}
+              </Text>
               <Text color="white" inverse={isSelected}>
-                {m.id.padEnd(28)}
+                {truncateId(m.id, 46).padEnd(50)}
               </Text>
               <Text color="gray" inverse={isSelected}>
-                {m.gameId.slice(0, 14).padEnd(16)}
-              </Text>
-              <Text color="gray" inverse={isSelected}>
-                {m.categoryId.padEnd(12)}
+                {m.categoryId.padEnd(14)}
               </Text>
               <Text color={getStatusColor(m.status)} bold inverse={isSelected}>
-                {m.status.padEnd(10)}
+                {m.status.padEnd(12)}
               </Text>
               <Text color="yellow" inverse={isSelected}>
                 {m.outcome ?? '-'}
