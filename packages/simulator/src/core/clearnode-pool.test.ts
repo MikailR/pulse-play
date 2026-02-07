@@ -178,6 +178,20 @@ describe('ClearnodePool', () => {
       expect(result.appSessionId).toBeDefined();
     });
 
+    it('passes sessionData to createAppSessionMessage', async () => {
+      pool.addWallet(WALLET_1_KEY, WALLET_1_ADDR);
+      const sessionData = JSON.stringify({ v: 1, marketId: 'm1', outcome: 'BALL', amount: 5, timestamp: 0 });
+      await pool.createAppSession(WALLET_1_ADDR, MM_ADDR, '5000000', sessionData);
+
+      const { createAppSessionMessage } = require('@erc7824/nitrolite');
+      expect(createAppSessionMessage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          session_data: sessionData,
+        }),
+      );
+    });
+
     it('propagates sendAndWait errors', async () => {
       mockSendAndWait.mockRejectedValue(new Error('RPC timeout'));
       pool.addWallet(WALLET_1_KEY, WALLET_1_ADDR);

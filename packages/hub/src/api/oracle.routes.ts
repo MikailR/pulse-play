@@ -4,6 +4,7 @@ import type { GameStateRequest, OutcomeRequest } from './types.js';
 import type { Outcome } from '../modules/lmsr/types.js';
 import { getPrice } from '../modules/lmsr/engine.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
+import { encodeSessionData, type SessionDataV3 } from '../modules/clearnode/session-data.js';
 
 let marketCounter = 0;
 
@@ -113,14 +114,26 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     // ── Settle losers first (MM needs funds before paying winners) ──
     for (const loser of result.losers) {
-      try {
-        const pos = positionMap.get(loser.appSessionId);
-        const version = pos ? pos.appSessionVersion + 1 : 2;
-        const lossAmount = toMicroUnits(loser.loss);
-        const sessionId = loser.appSessionId as `0x${string}`;
-        const loserAddr = loser.address as `0x${string}`;
-        const mm = mmAddress as `0x${string}`;
+      const pos = positionMap.get(loser.appSessionId);
+      const version = pos ? pos.appSessionVersion + 1 : 2;
+      const lossAmount = toMicroUnits(loser.loss);
+      const sessionId = loser.appSessionId as `0x${string}`;
+      const loserAddr = loser.address as `0x${string}`;
+      const mm = mmAddress as `0x${string}`;
 
+      const v3Data: SessionDataV3 = {
+        v: 3,
+        resolution: outcome as Outcome,
+        result: 'LOSS',
+        payout: 0,
+        profit: -loser.loss,
+        shares: pos ? pos.shares : 0,
+        costPaid: pos ? pos.costPaid : 0,
+        timestamp: Date.now(),
+      };
+      const v3SessionData = encodeSessionData(v3Data);
+
+      try {
         // Update state: reallocate user funds to MM
         await ctx.clearnodeClient.submitAppState({
           appSessionId: sessionId,
@@ -130,8 +143,15 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
             { participant: loserAddr, asset: ASSET, amount: '0' },
             { participant: mm, asset: ASSET, amount: lossAmount },
           ],
+          sessionData: v3SessionData,
         });
         ctx.log.resolutionStateUpdate(loser.address, loser.appSessionId, version);
+        ctx.positionTracker.updateAppSessionVersion(loser.appSessionId, version);
+        ctx.ws.broadcast({
+          type: 'SESSION_VERSION_UPDATED',
+          appSessionId: loser.appSessionId,
+          version,
+        });
 
         // Close the session
         await ctx.clearnodeClient.closeSession({
@@ -140,6 +160,7 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
             { participant: loserAddr, asset: ASSET, amount: '0' },
             { participant: mm, asset: ASSET, amount: lossAmount },
           ],
+          sessionData: v3SessionData,
         });
         ctx.log.resolutionSessionClosed(loser.address, loser.appSessionId);
       } catch (err) {
@@ -172,6 +193,18 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       const winnerAddr = winner.address as `0x${string}`;
       const mm = mmAddress as `0x${string}`;
 
+      const v3Data: SessionDataV3 = {
+        v: 3,
+        resolution: outcome as Outcome,
+        result: 'WIN',
+        payout: winner.payout,
+        profit: winner.payout - costPaid,
+        shares: pos ? pos.shares : 0,
+        costPaid,
+        timestamp: Date.now(),
+      };
+      const v3SessionData = encodeSessionData(v3Data);
+
       // Close session: return user's original funds
       try {
         await ctx.clearnodeClient.closeSession({
@@ -180,6 +213,7 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
             { participant: winnerAddr, asset: ASSET, amount: toMicroUnits(costPaid) },
             { participant: mm, asset: ASSET, amount: '0' },
           ],
+          sessionData: v3SessionData,
         });
         ctx.log.resolutionSessionClosed(winner.address, winner.appSessionId);
       } catch (err) {

@@ -236,6 +236,19 @@ export const logger = {
     write(`${INDENT}${DIM}├${RESET} ${a} session ${DIM}${appSessionId.slice(0, 10)}...${RESET} ${GREEN}closed${RESET}`);
   },
 
+  betSessionDataUpdated(address: string, appSessionId: string, version: number): void {
+    if (silent) return;
+    const a = `${MAGENTA}${addr(address)}${RESET}`;
+    write(`${INDENT}${DIM}├${RESET} ${a} session ${DIM}${appSessionId.slice(0, 10)}...${RESET} data updated → v${version}`);
+  },
+
+  betSessionDataFailed(address: string, appSessionId: string, err: unknown): void {
+    if (silent) return;
+    const a = `${MAGENTA}${addr(address)}${RESET}`;
+    const msg = err instanceof Error ? err.message : String(err);
+    write(`${INDENT}${DIM}├${RESET} ${YELLOW}V2 sessionData failed${RESET} ${a} ${DIM}${appSessionId.slice(0, 10)}...${RESET} — ${msg}`);
+  },
+
   resolutionStateUpdate(address: string, appSessionId: string, version: number): void {
     if (silent) return;
     const a = `${MAGENTA}${addr(address)}${RESET}`;

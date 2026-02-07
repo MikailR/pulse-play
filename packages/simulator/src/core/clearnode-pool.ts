@@ -124,6 +124,7 @@ export class ClearnodePool {
     bettorAddress: Address,
     mmAddress: Address,
     amount: string,
+    sessionData?: string,
   ): Promise<CreateAppSessionResult> {
     await this.ensureConnected(bettorAddress);
 
@@ -142,6 +143,7 @@ export class ClearnodePool {
       allocations: [
         { asset: 'ytest.usd', amount, participant: bettorAddress },
       ],
+      session_data: sessionData,
     });
 
     const raw = await sendAndWait(conn.ws!, msg, 'create_app_session');

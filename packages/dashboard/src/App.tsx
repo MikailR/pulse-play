@@ -300,6 +300,16 @@ export function App({ wsUrl, hubUrl }: AppProps) {
         }
         break;
 
+      case 'SESSION_VERSION_UPDATED':
+        setPositions((prev) =>
+          prev.map((p) =>
+            p.appSessionId === msg.appSessionId
+              ? { ...p, appSessionVersion: msg.version }
+              : p
+          )
+        );
+        break;
+
       case 'SESSION_SETTLED':
         setPositions((prev) =>
           prev.map((p) =>

@@ -14,6 +14,13 @@ export class PositionTracker {
     }
   }
 
+  updateAppSessionVersion(appSessionId: string, version: number): void {
+    const position = this.positions.find((p) => p.appSessionId === appSessionId);
+    if (position) {
+      position.appSessionVersion = version;
+    }
+  }
+
   getPositionsByMarket(marketId: string): Position[] {
     return this.positions.filter((p) => p.marketId === marketId);
   }

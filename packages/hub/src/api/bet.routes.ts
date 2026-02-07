@@ -3,6 +3,7 @@ import type { AppContext } from '../context.js';
 import type { BetRequest, BetResponse } from './types.js';
 import { getPrice, getShares, getNewQuantities } from '../modules/lmsr/engine.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
+import { encodeSessionData, type SessionDataV2 } from '../modules/clearnode/session-data.js';
 
 export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post<{ Body: BetRequest }>('/api/bet', async (req, reply) => {
@@ -46,6 +47,10 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
 
       return { accepted: false, reason } as BetResponse;
     }
+
+    // Capture pre-bet odds
+    const preBetPriceBall = getPrice(market.qBall, market.qStrike, market.b, 'BALL');
+    const preBetPriceStrike = getPrice(market.qBall, market.qStrike, market.b, 'STRIKE');
 
     // Calculate shares from LMSR
     const shares = getShares(market.qBall, market.qStrike, market.b, outcome, amount);
@@ -93,6 +98,41 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
 
     ctx.log.betPlaced(address, amount, outcome, marketId, shares, newPriceBall, newPriceStrike);
     ctx.log.broadcast('ODDS_UPDATE', ctx.ws.getConnectionCount());
+
+    // V2 sessionData: enrich app session with LMSR confirmation (non-fatal)
+    try {
+      const mmAddress = ctx.clearnodeClient.getAddress();
+      const v2Data: SessionDataV2 = {
+        v: 2,
+        marketId,
+        outcome,
+        amount,
+        shares,
+        effectivePricePerShare: amount / shares,
+        preBetOdds: { ball: preBetPriceBall, strike: preBetPriceStrike },
+        postBetOdds: { ball: newPriceBall, strike: newPriceStrike },
+        timestamp,
+      };
+      await ctx.clearnodeClient.submitAppState({
+        appSessionId: appSessionId as `0x${string}`,
+        intent: 'operate',
+        version: appSessionVersion + 1,
+        allocations: [
+          { participant: address as `0x${string}`, asset: ASSET, amount: toMicroUnits(amount) },
+          { participant: mmAddress as `0x${string}`, asset: ASSET, amount: '0' },
+        ],
+        sessionData: encodeSessionData(v2Data),
+      });
+      ctx.positionTracker.updateAppSessionVersion(appSessionId, appSessionVersion + 1);
+      ctx.ws.broadcast({
+        type: 'SESSION_VERSION_UPDATED',
+        appSessionId,
+        version: appSessionVersion + 1,
+      });
+      ctx.log.betSessionDataUpdated(address, appSessionId, appSessionVersion + 1);
+    } catch (err) {
+      ctx.log.betSessionDataFailed(address, appSessionId, err);
+    }
 
     return {
       accepted: true,

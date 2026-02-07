@@ -205,6 +205,30 @@ describe('SimulationEngine', () => {
       expect(hubClient.placeBet).toHaveBeenCalled();
     });
 
+    it('passes V1 sessionData to createAppSession', async () => {
+      engine.setConfig({ delayMinMs: 10, delayMaxMs: 20, maxBetsPerWallet: 1 });
+      engine.start('market-1', '0xMM');
+
+      jest.advanceTimersByTime(50);
+      await jest.advanceTimersByTimeAsync(50);
+
+      expect(clearnodePool.createAppSession).toHaveBeenCalledWith(
+        expect.any(String),   // bettorAddress
+        expect.any(String),   // mmAddress
+        expect.any(String),   // amount
+        expect.stringContaining('"v":1'),  // V1 sessionData
+      );
+
+      // Verify sessionData content
+      const sessionDataArg = clearnodePool.createAppSession.mock.calls[0][3];
+      const parsed = JSON.parse(sessionDataArg);
+      expect(parsed.v).toBe(1);
+      expect(parsed.marketId).toBe('market-1');
+      expect(parsed.outcome).toMatch(/^(BALL|STRIKE)$/);
+      expect(parsed.amount).toBeGreaterThan(0);
+      expect(parsed.timestamp).toEqual(expect.any(Number));
+    });
+
     it('enforces maxBetsPerWallet limit', async () => {
       engine.setConfig({ delayMinMs: 10, delayMaxMs: 20, maxBetsPerWallet: 1 });
       engine.start('market-1', '0xMM');

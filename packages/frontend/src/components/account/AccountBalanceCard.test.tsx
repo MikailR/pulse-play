@@ -27,7 +27,7 @@ describe('AccountBalanceCard', () => {
     render(<AccountBalanceCard />);
 
     expect(screen.getByTestId('account-balance-not-connected')).toBeInTheDocument();
-    expect(screen.getByText('Connect wallet to view balance')).toBeInTheDocument();
+    expect(screen.getByText('Authenticate to view balance')).toBeInTheDocument();
   });
 
   it('displays formatted balance when connected', () => {

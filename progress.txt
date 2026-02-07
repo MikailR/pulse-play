@@ -1416,3 +1416,97 @@ When the simulator runs `:fund` for 10+ wallets, concurrent HTTP requests to the
 - **Hub:** 19 suites, 244 passed (was 233, +10 new faucet tests, 1 suite skipped)
 - **Simulator:** 5 suites, 106 passed (unchanged)
 - **Total hub+sim:** 350 passing tests
+
+---
+
+## Rich sessionData Across App Session Lifecycle
+Date: 2026-02-06
+
+### What was done:
+Implemented a 3-version sessionData lifecycle that makes each Clearnode app session self-describing:
+- **V1** (bettor creates session): bet intent — marketId, outcome, amount, timestamp
+- **V2** (hub accepts bet): LMSR confirmation — shares, effectivePricePerShare, pre/post-bet odds
+- **V3** (hub settles): resolution — result (WIN/LOSS), payout, profit, shares, costPaid
+
+### Hub Changes
+
+1. **session-data.ts** (NEW) — `SessionDataV1`, `SessionDataV2`, `SessionDataV3` types + `encodeSessionData`/`decodeSessionData` helpers
+2. **session-data.test.ts** (NEW) — 6 tests (round-trip V1/V2/V3, version discrimination, valid JSON, invalid JSON throws)
+3. **tracker.ts** — Added `updateAppSessionVersion(appSessionId, version)` method
+4. **tracker.test.ts** — +2 tests (version update + no-op on unknown)
+5. **bet.routes.ts** — Captures pre-bet odds, builds V2 SessionData after bet acceptance, calls `submitAppState` with V2 sessionData (non-fatal try/catch), updates appSessionVersion on success
+6. **bet.routes.test.ts** — +4 tests (V2 sessionData content, V2 failure non-fatal, version updated on success, version unchanged on failure)
+7. **oracle.routes.ts** — Builds V3 SessionData for losers (submitAppState + closeSession) and winners (closeSession), includes resolution, result, payout, profit
+8. **oracle.routes.test.ts** — +3 tests (loser submitAppState V3, loser closeSession V3, winner closeSession V3). Updated existing "calls submitAppState + closeSession for losers" test to clear mocks before resolution.
+9. **logger.ts** — Added `betSessionDataUpdated()` and `betSessionDataFailed()` methods
+10. **logger.test.ts** — Updated both test blocks with new logger methods
+
+### Frontend Changes
+
+1. **lib/clearnode/session-data.ts** (NEW) — `SessionDataV1` type + `encodeSessionData` helper (V1 only, client-side)
+2. **lib/clearnode/index.ts** — Added session-data export
+3. **hooks/useBet.ts** — Builds V1 sessionData before `createAppSession`, passes `sessionData: encodeSessionData(v1Data)`
+4. **hooks/useBet.test.ts** — +1 test (V1 sessionData contains marketId, outcome, amount). Updated existing "full success flow" to use `objectContaining` for new sessionData field.
+
+### Simulator Changes
+
+1. **core/clearnode-pool.ts** — Added optional `sessionData?: string` parameter to `createAppSession`, passes to SDK as `session_data`
+2. **core/simulation-engine.ts** — Builds V1 sessionData object, passes `JSON.stringify(v1Data)` to `createAppSession`
+3. **core/clearnode-pool.test.ts** — +1 test (sessionData passed to SDK)
+4. **core/simulation-engine.test.ts** — +1 test (V1 sessionData content verified)
+
+### Bug Fix (pre-existing)
+- **AccountBalanceCard.test.tsx** — Updated expected text from "Connect wallet to view balance" to "Authenticate to view balance" (matching component)
+
+### Design Decisions
+1. V2 is non-fatal: If Clearnode `submitAppState` for V2 fails, the bet is still accepted internally
+2. V2 allocations unchanged: No fund reallocation at V2, only sessionData enrichment
+3. Version tracking: Position's `appSessionVersion` updated after V2 success, so V3 uses correct next version regardless of V2 outcome
+4. Types duplicated across packages (not shared): Hub, frontend, simulator each have their own copy — small and stable
+
+### Test Results
+- **Hub:** 20 suites, 259 passed (was 244, +15 new: 6 session-data + 2 tracker + 4 bet + 3 oracle)
+- **Frontend:** 24 suites, 198 passed (was 197, +1 new useBet V1 test)
+- **Simulator:** 5 suites, 108 passed (was 106, +2 new: 1 pool + 1 engine)
+- **Dashboard:** 1 suite, 47 passed (unchanged)
+- **Total:** 612 passing tests
+
+---
+
+## SESSION_VERSION_UPDATED WebSocket Broadcast
+Date: 2026-02-06
+
+### Problem
+After a bet is accepted, the hub updates `appSessionVersion` from 1 to 2 via `updateAppSessionVersion()` in `bet.routes.ts`. However, no WebSocket broadcast notified the dashboard of this version change. The VERSION column stayed at 1 until resolution.
+
+### What was done
+1. **New `SESSION_VERSION_UPDATED` WS message type** — Added to hub `types.ts`, dashboard `types.ts`, and frontend `types.ts` (type parity)
+2. **Hub broadcast** — After successful V2 `submitAppState`, broadcasts `{ type: 'SESSION_VERSION_UPDATED', appSessionId, version }` via `ctx.ws.broadcast()`
+3. **Dashboard handler** — `App.tsx` processes `SESSION_VERSION_UPDATED` to update the matching position's `appSessionVersion` in real-time
+4. **Dashboard formatter** — `formatWsMessage()` formats the new type for the event log
+5. **Column rename** — PositionsPanel column header changed from `v` (4-char) to `VERSION` (9-char) with matching data cell padding
+6. **Tests** — +2 hub tests (broadcast on success, no broadcast on failure), +1 dashboard formatter test
+
+### Test Results
+- **Hub:** 20 suites, 261 passed (+2 new SESSION_VERSION_UPDATED broadcast tests)
+- **Dashboard:** 1 suite, 48 passed (+1 new formatter test)
+- **Frontend:** 24 suites, 198 passed (unchanged, type parity only)
+
+---
+
+## Fix: Missing V3 SESSION_VERSION_UPDATED Broadcast for Losers (oracle.routes.ts)
+Date: 2026-02-06
+
+### Problem
+The `SESSION_VERSION_UPDATED` broadcast was only implemented for the V1→V2 transition in `bet.routes.ts`. When the market resolves, losers go through `submitAppState` with V3 data in `oracle.routes.ts`, but no `SESSION_VERSION_UPDATED` was broadcast and `updateAppSessionVersion` was never called on the tracker. The dashboard never learned about V2→V3 for losers.
+
+### What was done
+1. **V3 version update + broadcast for losers** — After successful V3 `submitAppState` in the loser settlement loop (`oracle.routes.ts`), added `positionTracker.updateAppSessionVersion()` and `ws.broadcast({ type: 'SESSION_VERSION_UPDATED' })`, mirroring the V2 pattern in `bet.routes.ts`. Placed inside the try block so it only fires if `submitAppState` succeeds.
+2. **+2 tests** — `broadcasts SESSION_VERSION_UPDATED for losers after V3 submitAppState` and `does not broadcast SESSION_VERSION_UPDATED for losers when V3 submitAppState fails`
+
+### Notes
+- Winners don't get V3 `submitAppState` — they go straight to `closeSession` + `transfer`. No version increment for winners (by design).
+- Dashboard `App.tsx` already handles `SESSION_VERSION_UPDATED` generically, so no frontend changes needed.
+
+### Test Results
+- **Hub:** 20 suites, 263 passed (+2 new V3 broadcast tests)

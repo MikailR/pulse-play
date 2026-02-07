@@ -24,6 +24,8 @@ describe('Logger', () => {
     expect(() => logger.clearnodeAutoConnect()).not.toThrow();
     expect(() => logger.clearnodeConnected('0xMM1234567890')).not.toThrow();
     expect(() => logger.clearnodeDisconnected()).not.toThrow();
+    expect(() => logger.betSessionDataUpdated('0xAlice', '0xSESSION123', 2)).not.toThrow();
+    expect(() => logger.betSessionDataFailed('0xAlice', '0xSESSION123', new Error('fail'))).not.toThrow();
     expect(() => logger.betRejectionSessionClosed('0xSESSION123')).not.toThrow();
     expect(() => logger.resolutionSessionClosed('0xAlice', '0xSESSION123')).not.toThrow();
     expect(() => logger.resolutionStateUpdate('0xAlice', '0xSESSION123', 2)).not.toThrow();
@@ -56,6 +58,8 @@ describe('Logger', () => {
     logger.clearnodeAutoConnect();
     logger.clearnodeConnected('0xMM1234567890');
     logger.clearnodeDisconnected();
+    logger.betSessionDataUpdated('0xAlice', '0xSESSION123', 2);
+    logger.betSessionDataFailed('0xAlice', '0xSESSION123', new Error('fail'));
     logger.betRejectionSessionClosed('0xSESSION123');
     logger.resolutionSessionClosed('0xAlice', '0xSESSION123');
     logger.resolutionStateUpdate('0xAlice', '0xSESSION123', 2);

@@ -316,6 +316,8 @@ describe('Oracle Routes', () => {
 
       const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
       const closeSession = ctx.clearnodeClient.closeSession as jest.Mock;
+      submitAppState.mockClear();
+      closeSession.mockClear();
 
       await app.inject({
         method: 'POST',
@@ -323,12 +325,11 @@ describe('Oracle Routes', () => {
         payload: { outcome: 'BALL' },
       });
 
-      // Loser: Bob bet STRIKE, outcome is BALL
+      // Loser: Bob bet STRIKE, outcome is BALL — V3 submitAppState (resolution)
       expect(submitAppState).toHaveBeenCalledWith(
         expect.objectContaining({
           appSessionId: 'sess-0xBob',
           intent: 'operate',
-          version: 2,
           allocations: expect.arrayContaining([
             expect.objectContaining({ participant: '0xBob', amount: '0' }),
             expect.objectContaining({ participant: '0xMM', amount: '10000000' }),
@@ -448,6 +449,7 @@ describe('Oracle Routes', () => {
       await placeBet('0xBob', marketId, 'STRIKE', 10);
       await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
 
+      // Clear call order to only track resolution calls (not V2 from bet placement)
       const callOrder: string[] = [];
       (ctx.clearnodeClient.submitAppState as jest.Mock).mockImplementation(async () => {
         callOrder.push('submitAppState');
@@ -468,12 +470,12 @@ describe('Oracle Routes', () => {
 
       // Loser operations (submitAppState + closeSession) should come before winner operations
       const loserSubmitIdx = callOrder.indexOf('submitAppState');
-      const lastLoserIdx = callOrder.indexOf('closeSession');
+      const firstCloseIdx = callOrder.indexOf('closeSession');
       // Winner closeSession is the second closeSession call
       const winnerCloseIdx = callOrder.lastIndexOf('closeSession');
 
       expect(loserSubmitIdx).toBeLessThan(winnerCloseIdx);
-      expect(lastLoserIdx).toBeLessThan(winnerCloseIdx);
+      expect(firstCloseIdx).toBeLessThan(winnerCloseIdx);
     });
 
     test('winner gets BET_RESULT even when transfer fails (closeSession succeeds)', async () => {
@@ -507,6 +509,136 @@ describe('Oracle Routes', () => {
       );
       // closeSession should have been called successfully (not blocked by transfer failure)
       expect(ctx.clearnodeClient.closeSession).toHaveBeenCalled();
+    });
+
+    test('loser submitAppState includes V3 sessionData with result LOSS', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xBob', marketId, 'STRIKE', 10);
+      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+
+      const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
+      submitAppState.mockClear();
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL' },
+      });
+
+      expect(submitAppState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionData: expect.stringContaining('"v":3'),
+        }),
+      );
+
+      const callArgs = submitAppState.mock.calls[submitAppState.mock.calls.length - 1][0];
+      const data = JSON.parse(callArgs.sessionData);
+      expect(data.v).toBe(3);
+      expect(data.result).toBe('LOSS');
+      expect(data.payout).toBe(0);
+      expect(data.resolution).toBe('BALL');
+    });
+
+    test('loser closeSession includes V3 sessionData', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xBob', marketId, 'STRIKE', 10);
+      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+
+      const closeSession = ctx.clearnodeClient.closeSession as jest.Mock;
+      closeSession.mockClear();
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL' },
+      });
+
+      // The loser's closeSession should include V3 sessionData
+      const loserClose = closeSession.mock.calls.find((call: unknown[]) => {
+        const args = call[0] as { allocations: { participant: string }[] };
+        return args.allocations.some((a) => a.participant === '0xBob');
+      });
+      expect(loserClose).toBeDefined();
+      const data = JSON.parse(loserClose![0].sessionData);
+      expect(data.v).toBe(3);
+      expect(data.result).toBe('LOSS');
+    });
+
+    test('winner closeSession includes V3 sessionData with result WIN', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xAlice', marketId, 'BALL', 10);
+      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+
+      const closeSession = ctx.clearnodeClient.closeSession as jest.Mock;
+      closeSession.mockClear();
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL' },
+      });
+
+      expect(closeSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionData: expect.stringContaining('"v":3'),
+        }),
+      );
+
+      const callArgs = closeSession.mock.calls[0][0];
+      const data = JSON.parse(callArgs.sessionData);
+      expect(data.v).toBe(3);
+      expect(data.result).toBe('WIN');
+      expect(data.payout).toBeGreaterThan(0);
+      expect(data.resolution).toBe('BALL');
+    });
+
+    test('broadcasts SESSION_VERSION_UPDATED for losers after V3 submitAppState', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xBob', marketId, 'STRIKE', 10);
+      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+
+      const broadcastSpy = jest.spyOn(ctx.ws, 'broadcast');
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL' },
+      });
+
+      // Loser (Bob bet STRIKE, outcome BALL) should get SESSION_VERSION_UPDATED with V3
+      expect(broadcastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'SESSION_VERSION_UPDATED',
+          appSessionId: 'sess-0xBob',
+          version: 3, // appSessionVersion was 2 (after V2 bet acceptance), so V3 = 2 + 1
+        }),
+      );
+
+      // Position tracker should also have the updated version
+      // (positions are cleared after resolution, so we check via the broadcast)
+    });
+
+    test('does not broadcast SESSION_VERSION_UPDATED for losers when V3 submitAppState fails', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xBob', marketId, 'STRIKE', 10);
+      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+
+      // Make submitAppState fail for the loser's V3 state update
+      (ctx.clearnodeClient.submitAppState as jest.Mock).mockRejectedValueOnce(new Error('Clearnode down'));
+
+      const broadcastSpy = jest.spyOn(ctx.ws, 'broadcast');
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL' },
+      });
+
+      // SESSION_VERSION_UPDATED should NOT have been broadcast (submitAppState failed)
+      const versionBroadcasts = broadcastSpy.mock.calls.filter(
+        (call) => (call[0] as any).type === 'SESSION_VERSION_UPDATED',
+      );
+      expect(versionBroadcasts).toHaveLength(0);
     });
 
     test('no Clearnode calls when no positions exist', async () => {

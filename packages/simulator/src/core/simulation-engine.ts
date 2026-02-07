@@ -135,11 +135,19 @@ export class SimulationEngine {
     const roundedAmount = Math.round(amount * 100) / 100;
 
     try {
-      // Step 1: Create app session
+      // Step 1: Create app session with V1 sessionData
+      const v1Data = {
+        v: 1,
+        marketId,
+        outcome: wallet.side,
+        amount: roundedAmount,
+        timestamp: Date.now(),
+      };
       const session = await this.deps.clearnodePool.createAppSession(
         wallet.address as Address,
         mmAddress as Address,
         toMicroUnits(roundedAmount),
+        JSON.stringify(v1Data),
       );
 
       // Step 2: Notify hub

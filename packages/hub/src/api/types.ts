@@ -96,7 +96,8 @@ export type WsMessageType =
   | 'POSITION_ADDED'
   | 'CONNECTION_COUNT'
   | 'STATE_SYNC'
-  | 'SESSION_SETTLED';
+  | 'SESSION_SETTLED'
+  | 'SESSION_VERSION_UPDATED';
 
 export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
@@ -171,6 +172,12 @@ export interface WsSessionSettled {
   address: string;
 }
 
+export interface WsSessionVersionUpdated {
+  type: 'SESSION_VERSION_UPDATED';
+  appSessionId: string;
+  version: number;
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -179,4 +186,5 @@ export type WsMessage =
   | WsPositionAdded
   | WsConnectionCount
   | WsStateSync
-  | WsSessionSettled;
+  | WsSessionSettled
+  | WsSessionVersionUpdated;

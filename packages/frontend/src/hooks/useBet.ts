@@ -5,6 +5,7 @@ import { placeBet } from '@/lib/api';
 import { useClearnode } from '@/hooks/useClearnode';
 import { MM_ADDRESS } from '@/lib/config';
 import { toMicroUnits, ASSET } from '@/lib/units';
+import { encodeSessionData, type SessionDataV1 } from '@/lib/clearnode/session-data';
 import type { BetResponse, Outcome } from '@/lib/types';
 
 export type BetStep = 'idle' | 'creating-session' | 'notifying-hub';
@@ -53,14 +54,22 @@ export function useBet(options: UseBetOptions = {}): UseBetReturn {
       setError(null);
 
       try {
-        // Step 1: Create a real app session on Clearnode
+        // Step 1: Create a real app session on Clearnode with V1 sessionData
         setStep('creating-session');
+        const v1Data: SessionDataV1 = {
+          v: 1,
+          marketId,
+          outcome,
+          amount,
+          timestamp: Date.now(),
+        };
         const session = await createAppSession({
           counterparty: MM_ADDRESS,
           allocations: [
             { asset: ASSET, amount: toMicroUnits(amount), participant: address as `0x${string}` },
             { asset: ASSET, amount: '0', participant: MM_ADDRESS },
           ],
+          sessionData: encodeSessionData(v1Data),
         });
 
         // Step 2: Notify hub with the real session ID
