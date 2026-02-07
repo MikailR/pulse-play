@@ -476,6 +476,39 @@ describe('Oracle Routes', () => {
       expect(lastLoserIdx).toBeLessThan(winnerCloseIdx);
     });
 
+    test('winner gets BET_RESULT even when transfer fails (closeSession succeeds)', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xAlice', marketId, 'BALL', 10);
+      await app.inject({ method: 'POST', url: '/api/oracle/market/close' });
+
+      // closeSession succeeds, but transfer fails
+      const transfer = ctx.clearnodeClient.transfer as jest.Mock;
+      transfer.mockRejectedValueOnce(new Error('Allowance exceeded'));
+
+      const sendToSpy = jest.spyOn(ctx.ws, 'sendTo');
+      const errorSpy = jest.spyOn(ctx.log, 'error');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL' },
+      });
+
+      expect(res.json().success).toBe(true);
+      // Winner still gets BET_RESULT
+      expect(sendToSpy).toHaveBeenCalledWith(
+        '0xAlice',
+        expect.objectContaining({ type: 'BET_RESULT', result: 'WIN' }),
+      );
+      // Transfer error is logged with specific label
+      expect(errorSpy).toHaveBeenCalledWith(
+        'resolution-winner-transfer-0xAlice',
+        expect.any(Error),
+      );
+      // closeSession should have been called successfully (not blocked by transfer failure)
+      expect(ctx.clearnodeClient.closeSession).toHaveBeenCalled();
+    });
+
     test('no Clearnode calls when no positions exist', async () => {
       await activateAndOpenMarket();
       await app.inject({ method: 'POST', url: '/api/oracle/market/close' });

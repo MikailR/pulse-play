@@ -1218,3 +1218,160 @@ Date: 2026-02-06
 - Also reverted borderLeft={false} on EventLog and SystemInfo panels (left borders restored).
 - Files changed: useWebSocket.ts, App.tsx, SystemInfo.tsx, EventLog.tsx
 - All 47 dashboard tests pass, TypeScript builds clean.
+
+---
+
+## Frontend: Auto-reconnect Clearnode WebSocket
+Date: 2026-02-06
+
+### Problem
+Clearnode WebSocket server drops idle connections. Frontend had no recovery — `assertReady()` in
+`methods.ts` just threw, making bets permanently fail until manual page refresh. Backend already
+solved this with `ensureConnected()` lazy-connect pattern.
+
+### Key Insight
+ECDSA session signer survives WebSocket reconnections. If signer hasn't expired, only a new
+WebSocket is needed — no re-authentication, no MetaMask popup. Full re-auth only when session
+has actually expired.
+
+### Solution: Two-tier auto-reconnect in ClearnodeProvider
+1. **Detection**: Added `onclose`/`onerror` handlers on WebSocket after auth and after light reconnect.
+   Status goes to 'disconnected' but signer/expiresAt are preserved (not nulled).
+2. **Recovery**: `ensureConnected()` called before every method callback:
+   - Signer valid + WS dead → `reconnectWsOnly()` (opens WS only, no MetaMask)
+   - Signer expired/null → `authenticate()` (full 3-step auth, MetaMask popup)
+   - Concurrent calls → deduplicated via `connectPromiseRef`
+3. **Stale closure fix**: Method callbacks use `signerRef.current` (ref) instead of `signer` (state).
+   Dependencies changed from `[signer, ...]` to `[ensureConnected, ...]`.
+
+### Implementation Details
+- Added 3 refs: `signerRef`, `expiresAtRef`, `connectPromiseRef`
+- Refs synced everywhere state is set (auth success/failure, reconnect, disconnect, cleanup effect)
+- `authenticate()` now re-throws errors (callers wrapped in try/catch where needed)
+- `refreshBalance` uses refs but does NOT auto-reconnect (passive polling)
+- `getConfig` (no signer needed) still calls `ensureConnected()` for WS readiness
+
+### Files Modified
+- `packages/frontend/src/providers/ClearnodeProvider.tsx` — Refs, reconnectWsOnly, ensureConnected,
+  updated method callbacks, onclose/onerror handlers, authenticate re-throws
+- `packages/frontend/src/providers/ClearnodeProvider.test.tsx` — 6 new tests
+
+### New Tests
+1. Light reconnects (WS only) when signer is still valid
+2. Full re-auth when signer has expired
+3. Deduplicates concurrent reconnection attempts
+4. Status updates to disconnected when WS close event fires (signer preserved)
+5. Method returns correct result after light reconnect
+6. Error propagates when reconnection fails
+
+### Test Results
+- **Frontend:** 24 suites, 191 passed (was 185, +6 new)
+- **No changes** to methods.ts, rpc.ts, auth.ts, types.ts, or useBet.ts
+
+---
+
+## Fix: Clearnode Connection Dropping + Winner Payout Missing
+Date: 2026-02-06
+
+### Bug 1: Connection keeps dropping (frontend)
+**Root cause:** `useBet.ts` gated on `clearnodeStatus !== 'connected'` before calling `createAppSession`. When the Clearnode WS dropped (normal idle timeout), status went to `'disconnected'` and bets were rejected immediately — `createAppSession`'s built-in `ensureConnected()` (which handles transparent reconnection) was never reached.
+
+**Fix:**
+- Removed `clearnodeStatus` check (lines 52-57), destructure, and dependency from `useBet.ts`
+- `createAppSession` already calls `ensureConnected()` internally which does light WS-only reconnect if signer is valid, or full re-auth if expired
+- Replaced the "Clearnode not connected" test with a test verifying bets succeed via transparent reconnection when status is 'disconnected'
+
+### Bug 2: Winner doesn't receive winnings from market maker
+**Root cause (allowances):** `server.ts` created ClearnodeClient with `allowances: []`, overriding the default allowance in `auth.ts`. The MM's session key had no asset allowance, so `transfer()` (which sends profit from MM ledger to winner) failed silently.
+
+**Root cause (error handling):** Winner settlement had `closeSession` and `transfer` in a single try/catch. When `transfer` failed, the error was caught but the user still saw "You Won!" (BET_RESULT sent outside try/catch). User got their bet back from `closeSession` but the profit from `transfer` was lost.
+
+**Fixes:**
+1. `server.ts` — Changed `allowances: []` to `allowances: [{ asset: 'ytest.usd', amount: '100000000000' }]` ($100k)
+2. `oracle.routes.ts` — Separated winner `closeSession` and `transfer` into individual try/catch blocks with specific error labels (`resolution-winner-closeSession-*` and `resolution-winner-transfer-*`)
+3. Added test: "winner gets BET_RESULT even when transfer fails" verifying error isolation and specific error logging
+
+### Files Modified
+- `packages/frontend/src/hooks/useBet.ts` — Removed `clearnodeStatus` gate
+- `packages/frontend/src/hooks/useBet.test.ts` — Replaced "not connected" test with reconnection test
+- `packages/hub/src/server.ts` — Added proper allowances to ClearnodeClient
+- `packages/hub/src/api/oracle.routes.ts` — Separate try/catch for closeSession vs transfer
+- `packages/hub/src/api/oracle.routes.test.ts` — Added partial settlement failure test
+
+### Test Results
+- **Hub:** 17 suites, 233 passed (+1 new oracle test), 1 pre-existing integration timeout (unrelated)
+- **Frontend:** 24 suites, 191 passed (test count unchanged — replaced 1 test with 1 test)
+
+---
+
+## Fix: Clearnode WS Disconnect Leaking Into UI
+Date: 2026-02-06
+
+### Problem
+When Clearnode WebSocket drops (normal idle timeout), `ClearnodeProvider` sets `status` to `'disconnected'`. UI components gated on `status === 'connected'` showed wrong states:
+1. **AccountBalanceCard** showed "Connect wallet to view balance" despite having cached balance
+2. **SessionCard** badge flipped to "Not Authenticated" despite valid signer
+3. **refreshBalance** early-returned when WS dead (couldn't refresh)
+
+### Fix 1: refreshBalance auto-reconnects
+- Added `await ensureConnected()` at top of `refreshBalance` (wrapped in try/catch)
+- Moved `refreshBalance` definition after `ensureConnected` to avoid reference-before-definition
+- Dependency array changed from `[]` to `[ensureConnected]`
+
+### Fix 2: AccountBalanceCard gates on balance not status
+- Replaced `status === 'connected'` check with `balance === null`
+- Balance is set after first auth, preserved on WS drop, only cleared on explicit disconnect
+- Pulls `balance` + `refreshBalance` from context (dropped `status`)
+
+### Fix 3: SessionCard decoupled from WS liveness
+- `getStatusBadge()` now takes `expiresAt` as third parameter
+- Priority: transitional states → error → `isSessionValid` (Active) → `expiresAt > 0 && !valid` (Expired) → fallthrough (Not Authenticated)
+- Expiry section guard changed from `status === 'connected'` to `expiresAt > 0`
+
+### Files Modified
+- `packages/frontend/src/providers/ClearnodeProvider.tsx` — refreshBalance calls ensureConnected, moved after ensureConnected definition
+- `packages/frontend/src/components/account/AccountBalanceCard.tsx` — Gate on `balance !== null` not `status`
+- `packages/frontend/src/components/account/SessionCard.tsx` — Badge + expiry decoupled from WS status
+
+### Tests Updated
+- `ClearnodeProvider.test.tsx` — +2 tests (refreshBalance auto-reconnect, reconnect failure non-fatal)
+- `AccountBalanceCard.test.tsx` — Updated "not-connected" to gate on `balance: null`, changed "null balance" to "zero balance", +1 test (disconnected with cached balance)
+- `SessionCard.test.tsx` — +2 tests (Active when disconnected but valid, Expired badge when signer expires)
+
+### Test Results
+- **Frontend:** 24 suites, 196 passed (was 191, +5 new)
+
+---
+
+## Fix: "authentication required" After Clearnode WS Idle Disconnect
+Date: 2026-02-06
+
+### Root Cause
+After a few minutes idle, the Clearnode server drops the WebSocket. `ensureConnected()` detected the dead WS and took a "light reconnect" path (`reconnectWsOnly()`), which opened a **raw, unauthenticated WebSocket** — it never sent the 3-step EIP-712 auth handshake. The Clearnode server binds auth state per-WebSocket, so it rejected the next RPC call with `{"error":"authentication required"}`.
+
+### Fix: Two Changes
+
+**1. WebSocket keepalive heartbeat**
+- Added `useEffect` that sends `createGetConfigMessageV2()` (lightest RPC, no signer needed) every 30s while WS is OPEN
+- Uses `wsRef` (ref) — no React state dependency, interval runs for provider lifetime
+- Prevents the Clearnode server's idle timeout from ever triggering
+- Send failures silently caught (non-fatal)
+
+**2. Removed broken `reconnectWsOnly`, simplified `ensureConnected`**
+- Deleted `reconnectWsOnly` — it opened a new WS without authentication, fundamentally broken
+- Simplified `ensureConnected` to always call `authenticate()` when WS is dead (full 3-step handshake)
+- This matches the hub's behavior where every reconnect does full auth
+- Concurrent reconnection attempts still deduplicated via `connectPromiseRef`
+
+### Files Modified
+- `packages/frontend/src/providers/ClearnodeProvider.tsx` — Added `createGetConfigMessageV2` import, keepalive `useEffect`, deleted `reconnectWsOnly`, simplified `ensureConnected`
+- `packages/frontend/src/providers/ClearnodeProvider.test.tsx` — Updated 4 reconnect tests (now verify full auth), added 1 keepalive test
+
+### Test Updates
+- Renamed "light reconnects (WS only)" → "reconnects with full auth when WS drops" — asserts `authenticateBrowser` called 2x
+- Renamed "method returns correct result after light reconnect" → "after reconnect" — added auth mock
+- Updated dedup test and refreshBalance reconnect test to include auth mocks
+- Added "sends keepalive get_config message every 30 seconds" test using fake timers
+
+### Test Results
+- **Frontend:** 24 suites, 197 passed (was 196, +1 new keepalive test)

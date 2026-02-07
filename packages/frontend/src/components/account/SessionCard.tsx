@@ -9,19 +9,20 @@ interface SessionCardProps {
 function getStatusBadge(
   status: string,
   isSessionValid: boolean,
+  expiresAt: number,
 ): { label: string; color: string } {
-  if (status === 'connected' && isSessionValid) {
-    return { label: 'Active', color: 'bg-green-500/20 text-green-400' };
-  }
-  if (status === 'connected' && !isSessionValid) {
-    return { label: 'Expired', color: 'bg-orange-500/20 text-orange-400' };
-  }
   if (status === 'connecting' || status === 'authenticating') {
     const label = status === 'connecting' ? 'Connecting...' : 'Authenticating...';
     return { label, color: 'bg-yellow-500/20 text-yellow-400' };
   }
   if (status === 'error') {
     return { label: 'Error', color: 'bg-red-500/20 text-red-400' };
+  }
+  if (isSessionValid) {
+    return { label: 'Active', color: 'bg-green-500/20 text-green-400' };
+  }
+  if (expiresAt > 0 && !isSessionValid) {
+    return { label: 'Expired', color: 'bg-orange-500/20 text-orange-400' };
   }
   return { label: 'Not Authenticated', color: 'bg-gray-500/20 text-gray-400' };
 }
@@ -50,7 +51,7 @@ export function SessionCard({ className = '' }: SessionCardProps) {
     reconnect,
   } = useClearnode();
 
-  const badge = getStatusBadge(status, isSessionValid);
+  const badge = getStatusBadge(status, isSessionValid, expiresAt);
   const isLoading = status === 'connecting' || status === 'authenticating';
 
   return (
@@ -67,7 +68,7 @@ export function SessionCard({ className = '' }: SessionCardProps) {
 
       <div className="space-y-4">
         {/* Expiry */}
-        {status === 'connected' && (
+        {expiresAt > 0 && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-400">Session Expiry</span>
             <span

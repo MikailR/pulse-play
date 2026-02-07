@@ -21,8 +21,8 @@ describe('AccountBalanceCard', () => {
     mockUseClearnode.mockReturnValue(defaultContext());
   });
 
-  it('shows not-connected state when disconnected', () => {
-    mockUseClearnode.mockReturnValue(defaultContext({ status: 'disconnected' }));
+  it('shows not-connected state when balance is null', () => {
+    mockUseClearnode.mockReturnValue(defaultContext({ balance: null }));
 
     render(<AccountBalanceCard />);
 
@@ -37,8 +37,8 @@ describe('AccountBalanceCard', () => {
     expect(screen.getByTestId('account-balance')).toHaveTextContent('$10.00');
   });
 
-  it('displays $0.00 when balance is null', () => {
-    mockUseClearnode.mockReturnValue(defaultContext({ balance: null }));
+  it('displays $0.00 when balance is zero', () => {
+    mockUseClearnode.mockReturnValue(defaultContext({ balance: '0' }));
 
     render(<AccountBalanceCard />);
 
@@ -55,6 +55,18 @@ describe('AccountBalanceCard', () => {
     await user.click(screen.getByTestId('account-refresh-button'));
 
     expect(refreshBalance).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows balance card when disconnected but balance exists', () => {
+    mockUseClearnode.mockReturnValue(
+      defaultContext({ status: 'disconnected', balance: '5000000' }),
+    );
+
+    render(<AccountBalanceCard />);
+
+    expect(screen.getByTestId('account-balance-card')).toBeInTheDocument();
+    expect(screen.getByTestId('account-balance')).toHaveTextContent('$5.00');
+    expect(screen.queryByTestId('account-balance-not-connected')).not.toBeInTheDocument();
   });
 
   it('formats large balances correctly', () => {

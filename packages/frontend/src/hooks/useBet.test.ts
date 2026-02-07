@@ -236,15 +236,22 @@ describe('useBet', () => {
     expect(mockCreateAppSession).not.toHaveBeenCalled();
   });
 
-  it('returns error when Clearnode not connected', async () => {
+  it('calls createAppSession even when status is disconnected (transparent reconnection)', async () => {
     setupClearnodeMock({ status: 'disconnected' });
 
-    const onError = jest.fn();
+    mockPlaceBet.mockResolvedValueOnce({
+      accepted: true,
+      shares: 9.5,
+      newPriceBall: 0.55,
+      newPriceStrike: 0.45,
+    });
+
+    const onSuccess = jest.fn();
     const { result } = renderHook(() =>
       useBet({
         address: '0x123',
         marketId: 'market-1',
-        onError,
+        onSuccess,
       })
     );
 
@@ -252,9 +259,11 @@ describe('useBet', () => {
       await result.current.bet('BALL', 10);
     });
 
-    expect(result.current.error).toBe('Clearnode not connected');
-    expect(onError).toHaveBeenCalled();
-    expect(mockCreateAppSession).not.toHaveBeenCalled();
+    // createAppSession should still be called — it handles reconnection internally
+    expect(mockCreateAppSession).toHaveBeenCalled();
+    expect(mockPlaceBet).toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
   });
 
   it('sets isLoading during request', async () => {

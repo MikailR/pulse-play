@@ -166,14 +166,14 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     // ── Settle winners ──
     for (const winner of result.winners) {
-      try {
-        const pos = positionMap.get(winner.appSessionId);
-        const costPaid = pos ? pos.costPaid : 0;
-        const sessionId = winner.appSessionId as `0x${string}`;
-        const winnerAddr = winner.address as `0x${string}`;
-        const mm = mmAddress as `0x${string}`;
+      const pos = positionMap.get(winner.appSessionId);
+      const costPaid = pos ? pos.costPaid : 0;
+      const sessionId = winner.appSessionId as `0x${string}`;
+      const winnerAddr = winner.address as `0x${string}`;
+      const mm = mmAddress as `0x${string}`;
 
-        // Close session: return user's original funds
+      // Close session: return user's original funds
+      try {
         await ctx.clearnodeClient.closeSession({
           appSessionId: sessionId,
           allocations: [
@@ -182,19 +182,23 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
           ],
         });
         ctx.log.resolutionSessionClosed(winner.address, winner.appSessionId);
+      } catch (err) {
+        ctx.log.error(`resolution-winner-closeSession-${winner.address}`, err);
+      }
 
-        // Transfer profit (payout - costPaid) from MM to winner
-        const profit = winner.payout - costPaid;
-        if (profit > 0) {
+      // Transfer profit (payout - costPaid) from MM to winner
+      const profit = winner.payout - costPaid;
+      if (profit > 0) {
+        try {
           await ctx.clearnodeClient.transfer({
             destination: winnerAddr,
             asset: ASSET,
             amount: toMicroUnits(profit),
           });
           ctx.log.resolutionTransfer(winner.address, profit);
+        } catch (err) {
+          ctx.log.error(`resolution-winner-transfer-${winner.address}`, err);
         }
-      } catch (err) {
-        ctx.log.error(`resolution-winner-${winner.address}`, err);
       }
 
       // Always update status + notify (outside try/catch so winners are settled even if Clearnode fails)

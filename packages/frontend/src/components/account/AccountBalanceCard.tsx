@@ -13,15 +13,13 @@ function formatBalance(raw: string): string {
 }
 
 export function AccountBalanceCard({ className = '' }: AccountBalanceCardProps) {
-  const { status, balance, refreshBalance } = useClearnode();
+  const { balance, refreshBalance } = useClearnode();
 
-  const isConnected = status === 'connected';
-
-  if (!isConnected) {
+  if (balance === null) {
     return (
       <div className={`bg-gray-800 rounded-lg p-6 ${className}`} data-testid="account-balance-not-connected">
         <h2 className="text-lg font-semibold text-white mb-4">Balance</h2>
-        <p className="text-gray-400 text-sm">Connect wallet to view balance</p>
+        <p className="text-gray-400 text-sm">Authenticate to view balance</p>
       </div>
     );
   }

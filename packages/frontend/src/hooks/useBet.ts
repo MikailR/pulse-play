@@ -26,7 +26,7 @@ interface UseBetReturn {
 
 export function useBet(options: UseBetOptions = {}): UseBetReturn {
   const { address, marketId, onSuccess, onError } = options;
-  const { createAppSession, status: clearnodeStatus } = useClearnode();
+  const { createAppSession } = useClearnode();
 
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<BetStep>('idle');
@@ -44,13 +44,6 @@ export function useBet(options: UseBetOptions = {}): UseBetReturn {
 
       if (!MM_ADDRESS) {
         const err = new Error('MM_ADDRESS not configured');
-        setError(err.message);
-        onError?.(err);
-        return null;
-      }
-
-      if (clearnodeStatus !== 'connected') {
-        const err = new Error('Clearnode not connected');
         setError(err.message);
         onError?.(err);
         return null;
@@ -102,7 +95,7 @@ export function useBet(options: UseBetOptions = {}): UseBetReturn {
         setStep('idle');
       }
     },
-    [address, marketId, clearnodeStatus, createAppSession, onSuccess, onError]
+    [address, marketId, createAppSession, onSuccess, onError]
   );
 
   return {
