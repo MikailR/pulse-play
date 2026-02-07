@@ -12,11 +12,12 @@ const mockCompleteGame = api.completeGame as jest.MockedFunction<typeof api.comp
 const activeGame: Game = {
   id: 'game-1',
   sportId: 'baseball',
-  homeTeam: 'Yankees',
-  awayTeam: 'Red Sox',
+  homeTeamId: 'nyy',
+  awayTeamId: 'bos',
   status: 'ACTIVE',
   startedAt: Date.now(),
   completedAt: null,
+  imagePath: null,
   metadata: null,
   createdAt: Date.now(),
 };

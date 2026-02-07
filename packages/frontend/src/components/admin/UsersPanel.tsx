@@ -1,23 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getLeaderboard, getUserHistory } from '@/lib/api';
 import type { UserStats, Settlement } from '@/lib/types';
 
 export function UsersPanel() {
   const [users, setUsers] = useState<UserStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [history, setHistory] = useState<Record<string, Settlement[]>>({});
 
-  useEffect(() => {
-    getLeaderboard(100)
-      .then((data) => {
-        setUsers(data.leaderboard);
-        setIsLoading(false);
-      })
-      .catch(() => setIsLoading(false));
+  const fetchUsers = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await getLeaderboard(100);
+      setUsers(data.leaderboard);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load users');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const handleExpand = async (address: string) => {
     if (expandedUser === address) {
@@ -46,6 +55,21 @@ export function UsersPanel() {
     );
   }
 
+  if (error) {
+    return (
+      <div data-testid="users-error" className="text-center py-8">
+        <p className="text-red-400 text-sm mb-3">{error}</p>
+        <button
+          onClick={fetchUsers}
+          className="px-4 py-2 bg-surface-raised text-text-primary rounded text-sm hover:bg-surface-overlay transition-colors"
+          data-testid="users-retry"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   if (users.length === 0) {
     return (
       <p className="text-text-muted text-sm text-center py-8" data-testid="users-empty">
@@ -56,6 +80,15 @@ export function UsersPanel() {
 
   return (
     <div data-testid="users-panel">
+      <div className="flex justify-end mb-3">
+        <button
+          onClick={fetchUsers}
+          className="px-3 py-1 bg-surface-raised text-text-secondary rounded text-xs hover:bg-surface-overlay transition-colors"
+          data-testid="users-refresh"
+        >
+          Refresh
+        </button>
+      </div>
       <div className="space-y-2">
         {users.map((user) => (
           <div key={user.address} className="bg-surface-raised border border-border rounded-lg overflow-hidden">

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   AdminTabs,
   SportsPanel,
+  TeamsPanel,
   GamesPanel,
   MarketsPanel,
   UsersPanel,
@@ -19,7 +20,7 @@ export default function AdminPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold font-mono uppercase tracking-wide text-text-primary">Admin Dashboard</h1>
         <p className="text-text-secondary mt-2">
-          Manage sports, games, markets, and users
+          Manage sports, teams, games, markets, and users
         </p>
       </div>
 
@@ -27,6 +28,7 @@ export default function AdminPage() {
 
       <div className="bg-surface-raised border border-border rounded-lg p-6">
         {tab === 'sports' && <SportsPanel />}
+        {tab === 'teams' && <TeamsPanel />}
         {tab === 'games' && <GamesPanel />}
         {tab === 'markets' && <MarketsPanel />}
         {tab === 'users' && <UsersPanel />}

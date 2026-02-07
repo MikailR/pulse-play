@@ -149,4 +149,166 @@ describe('Sport Routes', () => {
       expect(body.categories).toEqual([]);
     });
   });
+
+  describe('POST /api/sports', () => {
+    test('creates a new sport', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/sports',
+        payload: { name: 'Tennis', description: 'Professional Tennis', id: 'tennis' },
+      });
+      const body = res.json();
+
+      expect(res.statusCode).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.sport.id).toBe('tennis');
+      expect(body.sport.name).toBe('Tennis');
+    });
+
+    test('returns 400 when name is missing', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/sports',
+        payload: { description: 'no name' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    test('returns 409 when sport already exists', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/sports',
+        payload: { name: 'Baseball', id: 'baseball' },
+      });
+      expect(res.statusCode).toBe(409);
+    });
+  });
+
+  describe('PUT /api/sports/:sportId', () => {
+    test('updates sport name', async () => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/sports/baseball',
+        payload: { name: 'MLB Baseball' },
+      });
+      const body = res.json();
+
+      expect(res.statusCode).toBe(200);
+      expect(body.sport.name).toBe('MLB Baseball');
+    });
+
+    test('returns 404 for nonexistent sport', async () => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/sports/cricket',
+        payload: { name: 'Cricket' },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('DELETE /api/sports/:sportId', () => {
+    test('rejects deletion when teams reference the sport', async () => {
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/api/sports/baseball',
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toContain('team(s) reference it');
+    });
+
+    test('returns 404 for nonexistent sport', async () => {
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/api/sports/cricket',
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('POST /api/sports/:sportId/categories', () => {
+    test('creates a new category', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/sports/baseball/categories',
+        payload: { name: 'Home Run', outcomes: ['YES', 'NO'], description: 'Home run or not' },
+      });
+      const body = res.json();
+
+      expect(res.statusCode).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.category.name).toBe('Home Run');
+      expect(body.category.outcomes).toEqual(['YES', 'NO']);
+    });
+
+    test('returns 400 with insufficient outcomes', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/sports/baseball/categories',
+        payload: { name: 'Bad', outcomes: ['ONLY_ONE'] },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    test('returns 404 for nonexistent sport', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/sports/cricket/categories',
+        payload: { name: 'X', outcomes: ['A', 'B'] },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('PUT /api/sports/:sportId/categories/:categoryId', () => {
+    test('updates category name', async () => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/sports/baseball/categories/pitching',
+        payload: { name: 'Pitch Type' },
+      });
+      const body = res.json();
+
+      expect(res.statusCode).toBe(200);
+      expect(body.category.name).toBe('Pitch Type');
+      expect(body.category.outcomes).toEqual(['BALL', 'STRIKE']); // unchanged
+    });
+
+    test('returns 404 for nonexistent category', async () => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/sports/baseball/categories/nonexistent',
+        payload: { name: 'X' },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('DELETE /api/sports/:sportId/categories/:categoryId', () => {
+    test('deletes a category with no market references', async () => {
+      // Create a temporary category
+      ctx.db.insert((await import('../db/schema.js')).marketCategories).values({
+        id: 'temp_cat',
+        sportId: 'baseball',
+        name: 'Temp',
+        outcomes: JSON.stringify(['A', 'B']),
+        createdAt: Date.now(),
+      }).run();
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/api/sports/baseball/categories/temp_cat',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().success).toBe(true);
+    });
+
+    test('returns 404 for nonexistent category', async () => {
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/api/sports/baseball/categories/nonexistent',
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
 });

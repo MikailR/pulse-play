@@ -17,7 +17,7 @@ describe('Game Routes', () => {
   });
 
   describe('GET /api/games', () => {
-    test('returns all games including the default test game', async () => {
+    test('returns all games including the default test game with enriched teams', async () => {
       const res = await app.inject({ method: 'GET', url: '/api/games' });
       const body = res.json();
 
@@ -28,15 +28,19 @@ describe('Game Routes', () => {
       const testGame = body.games.find((g: any) => g.id === DEFAULT_TEST_GAME_ID);
       expect(testGame).toBeDefined();
       expect(testGame.sportId).toBe('baseball');
-      expect(testGame.homeTeam).toBe('NYY');
-      expect(testGame.awayTeam).toBe('BOS');
+      expect(testGame.homeTeamId).toBe('nyy');
+      expect(testGame.awayTeamId).toBe('bos');
       expect(testGame.status).toBe('ACTIVE');
+      // Enriched team objects
+      expect(testGame.homeTeam).toBeDefined();
+      expect(testGame.homeTeam.abbreviation).toBe('NYY');
+      expect(testGame.awayTeam).toBeDefined();
+      expect(testGame.awayTeam.abbreviation).toBe('BOS');
     });
 
     test('filters games by sportId', async () => {
-      // Create games with different sports
-      ctx.gameManager.createGame('basketball', 'LAL', 'BOS', 'bball-1');
-      ctx.gameManager.createGame('baseball', 'SF', 'LAD', 'baseball-1');
+      ctx.gameManager.createGame('basketball', 'lal', 'gsw', 'bball-1');
+      ctx.gameManager.createGame('baseball', 'lad', 'chc', 'baseball-1');
 
       const res = await app.inject({
         method: 'GET',
@@ -47,19 +51,16 @@ describe('Game Routes', () => {
       expect(res.statusCode).toBe(200);
       expect(body.games).toBeInstanceOf(Array);
 
-      // All returned games should be baseball
       body.games.forEach((game: any) => {
         expect(game.sportId).toBe('baseball');
       });
 
-      // Should include at least the default test game and the one we just created
       expect(body.games.length).toBeGreaterThanOrEqual(2);
     });
 
     test('filters games by status', async () => {
-      // Create games with different statuses
-      const scheduled = ctx.gameManager.createGame('baseball', 'CHC', 'STL', 'scheduled-1');
-      const active = ctx.gameManager.createGame('baseball', 'ATL', 'MIA', 'active-1');
+      const scheduled = ctx.gameManager.createGame('baseball', 'lad', 'chc', 'scheduled-1');
+      const active = ctx.gameManager.createGame('baseball', 'atl', 'hou', 'active-1');
       ctx.gameManager.activateGame(active.id);
 
       const res = await app.inject({
@@ -71,12 +72,10 @@ describe('Game Routes', () => {
       expect(res.statusCode).toBe(200);
       expect(body.games).toBeInstanceOf(Array);
 
-      // All returned games should be SCHEDULED
       body.games.forEach((game: any) => {
         expect(game.status).toBe('SCHEDULED');
       });
 
-      // Should include the scheduled game
       const foundScheduled = body.games.find((g: any) => g.id === scheduled.id);
       expect(foundScheduled).toBeDefined();
     });
@@ -89,8 +88,8 @@ describe('Game Routes', () => {
         url: '/api/games',
         payload: {
           sportId: 'basketball',
-          homeTeam: 'KC',
-          awayTeam: 'SF',
+          homeTeamId: 'lal',
+          awayTeamId: 'gsw',
         },
       });
       const body = res.json();
@@ -99,11 +98,14 @@ describe('Game Routes', () => {
       expect(body.success).toBe(true);
       expect(body.game).toBeDefined();
       expect(body.game.sportId).toBe('basketball');
-      expect(body.game.homeTeam).toBe('KC');
-      expect(body.game.awayTeam).toBe('SF');
+      expect(body.game.homeTeamId).toBe('lal');
+      expect(body.game.awayTeamId).toBe('gsw');
       expect(body.game.status).toBe('SCHEDULED');
       expect(body.game.id).toBeDefined();
       expect(body.game.createdAt).toBeDefined();
+      // Enriched team
+      expect(body.game.homeTeam.name).toBe('Los Angeles Lakers');
+      expect(body.game.awayTeam.name).toBe('Golden State Warriors');
     });
 
     test('creates a new game with custom ID', async () => {
@@ -113,8 +115,8 @@ describe('Game Routes', () => {
         url: '/api/games',
         payload: {
           sportId: 'soccer',
-          homeTeam: 'BOS',
-          awayTeam: 'NYR',
+          homeTeamId: 'fcb',
+          awayTeamId: 'rma',
           id: customId,
         },
       });
@@ -124,8 +126,8 @@ describe('Game Routes', () => {
       expect(body.success).toBe(true);
       expect(body.game.id).toBe(customId);
       expect(body.game.sportId).toBe('soccer');
-      expect(body.game.homeTeam).toBe('BOS');
-      expect(body.game.awayTeam).toBe('NYR');
+      expect(body.game.homeTeamId).toBe('fcb');
+      expect(body.game.awayTeamId).toBe('rma');
       expect(body.game.status).toBe('SCHEDULED');
     });
 
@@ -134,41 +136,41 @@ describe('Game Routes', () => {
         method: 'POST',
         url: '/api/games',
         payload: {
-          homeTeam: 'KC',
-          awayTeam: 'SF',
+          homeTeamId: 'nyy',
+          awayTeamId: 'bos',
         },
       });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe('sportId, homeTeam, and awayTeam are required');
+      expect(res.json().error).toBe('sportId, homeTeamId, and awayTeamId are required');
     });
 
-    test('returns 400 when homeTeam is missing', async () => {
+    test('returns 400 when homeTeamId is missing', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/games',
         payload: {
           sportId: 'basketball',
-          awayTeam: 'SF',
+          awayTeamId: 'gsw',
         },
       });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe('sportId, homeTeam, and awayTeam are required');
+      expect(res.json().error).toBe('sportId, homeTeamId, and awayTeamId are required');
     });
 
-    test('returns 400 when awayTeam is missing', async () => {
+    test('returns 400 when awayTeamId is missing', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/games',
         payload: {
           sportId: 'basketball',
-          homeTeam: 'KC',
+          homeTeamId: 'lal',
         },
       });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe('sportId, homeTeam, and awayTeam are required');
+      expect(res.json().error).toBe('sportId, homeTeamId, and awayTeamId are required');
     });
 
     test('returns 400 when body is empty', async () => {
@@ -179,12 +181,27 @@ describe('Game Routes', () => {
       });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe('sportId, homeTeam, and awayTeam are required');
+      expect(res.json().error).toBe('sportId, homeTeamId, and awayTeamId are required');
+    });
+
+    test('returns 400 when team does not belong to sport', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/games',
+        payload: {
+          sportId: 'basketball',
+          homeTeamId: 'nyy', // baseball team
+          awayTeamId: 'lal',
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain("does not belong to sport");
     });
   });
 
   describe('GET /api/games/:gameId', () => {
-    test('returns game with markets when game exists', async () => {
+    test('returns game with markets and enriched teams when game exists', async () => {
       const res = await app.inject({
         method: 'GET',
         url: `/api/games/${DEFAULT_TEST_GAME_ID}`
@@ -195,8 +212,10 @@ describe('Game Routes', () => {
       expect(body.game).toBeDefined();
       expect(body.game.id).toBe(DEFAULT_TEST_GAME_ID);
       expect(body.game.sportId).toBe('baseball');
-      expect(body.game.homeTeam).toBe('NYY');
-      expect(body.game.awayTeam).toBe('BOS');
+      expect(body.game.homeTeamId).toBe('nyy');
+      expect(body.game.awayTeamId).toBe('bos');
+      expect(body.game.homeTeam.name).toBe('New York Yankees');
+      expect(body.game.awayTeam.name).toBe('Boston Red Sox');
       expect(body.markets).toBeDefined();
       expect(body.markets).toBeInstanceOf(Array);
     });
@@ -212,7 +231,6 @@ describe('Game Routes', () => {
     });
 
     test('includes markets when they exist for the game', async () => {
-      // Create markets for the test game (using 'pitching' and 'batting' which are seeded for baseball)
       const market1 = ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'pitching');
       const market2 = ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'batting');
 
@@ -233,7 +251,7 @@ describe('Game Routes', () => {
     });
 
     test('returns empty markets array when game has no markets', async () => {
-      const game = ctx.gameManager.createGame('soccer', 'MAN', 'LIV', 'soccer-1');
+      const game = ctx.gameManager.createGame('soccer', 'fcb', 'rma', 'soccer-1');
 
       const res = await app.inject({
         method: 'GET',
@@ -250,7 +268,7 @@ describe('Game Routes', () => {
 
   describe('POST /api/games/:gameId/activate', () => {
     test('activates a SCHEDULED game', async () => {
-      const game = ctx.gameManager.createGame('baseball', 'TEX', 'HOU', 'scheduled-game');
+      const game = ctx.gameManager.createGame('baseball', 'lad', 'hou', 'scheduled-game');
 
       expect(game.status).toBe('SCHEDULED');
       expect(game.startedAt).toBeNull();
@@ -269,7 +287,6 @@ describe('Game Routes', () => {
     });
 
     test('returns 400 when trying to activate an already active game', async () => {
-      // DEFAULT_TEST_GAME_ID is already ACTIVE
       const res = await app.inject({
         method: 'POST',
         url: `/api/games/${DEFAULT_TEST_GAME_ID}/activate`,
@@ -281,7 +298,7 @@ describe('Game Routes', () => {
     });
 
     test('returns 400 when trying to activate a completed game', async () => {
-      const game = ctx.gameManager.createGame('baseball', 'ARI', 'SD', 'completed-game');
+      const game = ctx.gameManager.createGame('baseball', 'atl', 'chc', 'completed-game');
       ctx.gameManager.activateGame(game.id);
       ctx.gameManager.completeGame(game.id);
 
@@ -298,7 +315,7 @@ describe('Game Routes', () => {
 
   describe('POST /api/games/:gameId/complete', () => {
     test('completes an ACTIVE game', async () => {
-      const game = ctx.gameManager.createGame('baseball', 'OAK', 'SEA', 'active-game');
+      const game = ctx.gameManager.createGame('baseball', 'lad', 'atl', 'active-game');
       ctx.gameManager.activateGame(game.id);
 
       const activatedGame = ctx.gameManager.getGame(game.id);
@@ -319,7 +336,7 @@ describe('Game Routes', () => {
     });
 
     test('returns 400 when trying to complete a SCHEDULED game', async () => {
-      const game = ctx.gameManager.createGame('baseball', 'MIN', 'CLE', 'scheduled-game-2');
+      const game = ctx.gameManager.createGame('baseball', 'hou', 'chc', 'scheduled-game-2');
 
       const res = await app.inject({
         method: 'POST',
@@ -332,7 +349,7 @@ describe('Game Routes', () => {
     });
 
     test('returns 400 when trying to complete an already completed game', async () => {
-      const game = ctx.gameManager.createGame('baseball', 'DET', 'CWS', 'completed-game-2');
+      const game = ctx.gameManager.createGame('baseball', 'nyy', 'lad', 'completed-game-2');
       ctx.gameManager.activateGame(game.id);
       ctx.gameManager.completeGame(game.id);
 

@@ -119,12 +119,22 @@ describe('HubClient', () => {
   });
 
   describe('closeMarket', () => {
-    it('posts to /api/oracle/market/close', async () => {
+    it('posts to /api/oracle/market/close with empty body by default', async () => {
       mockFetch.mockResolvedValue(mockOk({ success: true, marketId: 'game1-pitching-1' }));
 
       const result = await client.closeMarket();
       expect(result.success).toBe(true);
       expect(result.marketId).toBe('game1-pitching-1');
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toEqual({});
+    });
+
+    it('passes gameId and categoryId when provided', async () => {
+      mockFetch.mockResolvedValue(mockOk({ success: true, marketId: 'game1-pitching-1' }));
+
+      await client.closeMarket('game1', 'pitching');
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toEqual({ gameId: 'game1', categoryId: 'pitching' });
     });
   });
 
@@ -138,18 +148,26 @@ describe('HubClient', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.outcome).toBe('BALL');
     });
+
+    it('passes gameId and categoryId when provided', async () => {
+      mockFetch.mockResolvedValue(mockOk({ success: true, marketId: 'game1-pitching-1', outcome: 'BALL', winners: 1, losers: 0, totalPayout: 5 }));
+
+      await client.resolveMarket('BALL', 'game1', 'pitching');
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toEqual({ outcome: 'BALL', gameId: 'game1', categoryId: 'pitching' });
+    });
   });
 
   describe('createGame', () => {
     it('posts to /api/games', async () => {
       mockFetch.mockResolvedValue(mockOk({ success: true, game: { id: 'game-1', status: 'SCHEDULED' } }));
 
-      const result = await client.createGame('baseball', 'Home', 'Away');
+      const result = await client.createGame('baseball', 'nyy', 'bos');
       expect(result.game.id).toBe('game-1');
       expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sportId: 'baseball', homeTeam: 'Home', awayTeam: 'Away' }),
+        body: JSON.stringify({ sportId: 'baseball', homeTeamId: 'nyy', awayTeamId: 'bos' }),
       });
     });
   });
@@ -165,6 +183,42 @@ describe('HubClient', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
+    });
+  });
+
+  describe('getGames', () => {
+    it('fetches /api/games with no params by default', async () => {
+      mockFetch.mockResolvedValue(mockOk({ games: [{ id: 'g1', sportId: 'baseball', status: 'ACTIVE' }] }));
+
+      const result = await client.getGames();
+      expect(result.games).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/games');
+    });
+
+    it('passes sportId and status as query params', async () => {
+      mockFetch.mockResolvedValue(mockOk({ games: [] }));
+
+      await client.getGames({ sportId: 'baseball', status: 'ACTIVE' });
+      const url = mockFetch.mock.calls[0][0];
+      expect(url).toContain('sportId=baseball');
+      expect(url).toContain('status=ACTIVE');
+    });
+  });
+
+  describe('getTeams', () => {
+    it('fetches /api/teams with no params by default', async () => {
+      mockFetch.mockResolvedValue(mockOk({ teams: [{ id: 'nyy', name: 'Yankees', abbreviation: 'NYY', sportId: 'baseball' }] }));
+
+      const result = await client.getTeams();
+      expect(result.teams).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/teams');
+    });
+
+    it('passes sportId as query param', async () => {
+      mockFetch.mockResolvedValue(mockOk({ teams: [] }));
+
+      await client.getTeams('baseball');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/teams?sportId=baseball');
     });
   });
 

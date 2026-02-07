@@ -10,6 +10,7 @@ import { buildApp } from './app.js';
 import { MarketManager } from './modules/market/manager.js';
 import { PositionTracker } from './modules/position/tracker.js';
 import { GameManager } from './modules/game/manager.js';
+import { TeamManager } from './modules/team/manager.js';
 import { UserTracker } from './modules/user/tracker.js';
 import { ClearnodeClient } from './modules/clearnode/client.js';
 import { OracleService } from './modules/oracle/oracle.js';
@@ -39,12 +40,14 @@ async function main() {
     marketManager: new MarketManager(db),
     positionTracker: new PositionTracker(db),
     gameManager: new GameManager(db),
+    teamManager: new TeamManager(db),
     userTracker: new UserTracker(db),
     clearnodeClient,
     oracle: new OracleService(),
     ws: new WsManager(),
     log: logger,
     transactionFeePercent: parseInt(process.env.TRANSACTION_FEE_PERCENT ?? '1', 10),
+    uploadsDir: resolve(__dirname, '../uploads'),
   };
 
   const app = await buildApp(ctx);

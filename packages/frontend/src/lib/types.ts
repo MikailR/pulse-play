@@ -26,14 +26,26 @@ export interface MarketCategory {
   createdAt: number;
 }
 
+export interface Team {
+  id: string;
+  sportId: string;
+  name: string;
+  abbreviation: string;
+  logoPath: string | null;
+  createdAt: number;
+}
+
 export interface Game {
   id: string;
   sportId: string;
-  homeTeam: string;
-  awayTeam: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeTeam?: Team;
+  awayTeam?: Team;
   status: GameStatus;
   startedAt: number | null;
   completedAt: number | null;
+  imagePath: string | null;
   metadata: string | null;
   createdAt: number;
 }

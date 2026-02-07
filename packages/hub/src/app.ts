@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import type { AppContext } from './context.js';
 import { registerMarketRoutes } from './api/market.routes.js';
 import { registerPositionRoutes } from './api/positions.routes.js';
@@ -12,6 +14,7 @@ import { registerMMRoutes } from './api/mm.routes.js';
 import { registerSportRoutes } from './api/sport.routes.js';
 import { registerGameRoutes } from './api/game.routes.js';
 import { registerUserRoutes } from './api/user.routes.js';
+import { registerTeamRoutes } from './api/team.routes.js';
 import type { WsStateSync } from './api/types.js';
 import { getPrices } from './modules/lmsr/engine.js';
 import { eq } from 'drizzle-orm';
@@ -27,6 +30,16 @@ export async function buildApp(ctx: AppContext) {
   });
 
   await app.register(websocket);
+  await app.register(multipart, { limits: { fileSize: 2 * 1024 * 1024 } });
+
+  // Serve uploaded files statically (only in production/dev, skip in tests)
+  if (ctx.uploadsDir) {
+    await app.register(fastifyStatic, {
+      root: ctx.uploadsDir,
+      prefix: '/uploads/',
+      decorateReply: false,
+    });
+  }
 
   // Request/response lifecycle logging
   app.addHook('onRequest', async (req) => {
@@ -117,6 +130,7 @@ export async function buildApp(ctx: AppContext) {
   registerMMRoutes(app, ctx);
   registerSportRoutes(app, ctx);
   registerGameRoutes(app, ctx);
+  registerTeamRoutes(app, ctx);
   registerUserRoutes(app, ctx);
 
   return app;

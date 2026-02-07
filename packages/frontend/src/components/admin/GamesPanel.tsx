@@ -1,8 +1,15 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getGames, createGame, activateGame, completeGame } from '@/lib/api';
-import type { Game } from '@/lib/types';
+import { getGames, getTeams, getSports, createGame, activateGame, completeGame } from '@/lib/api';
+import type { Game, Team, Sport } from '@/lib/types';
+import { HUB_REST_URL } from '@/lib/config';
+
+function getMatchupDisplay(game: Game) {
+  const home = game.homeTeam?.abbreviation ?? game.homeTeamId;
+  const away = game.awayTeam?.abbreviation ?? game.awayTeamId;
+  return `${home} vs ${away}`;
+}
 
 export function GamesPanel() {
   const [games, setGames] = useState<Game[]>([]);
@@ -11,9 +18,11 @@ export function GamesPanel() {
 
   // Create form
   const [showCreate, setShowCreate] = useState(false);
-  const [sportId, setSportId] = useState('baseball');
-  const [homeTeam, setHomeTeam] = useState('');
-  const [awayTeam, setAwayTeam] = useState('');
+  const [sports, setSports] = useState<Sport[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [sportId, setSportId] = useState('');
+  const [homeTeamId, setHomeTeamId] = useState('');
+  const [awayTeamId, setAwayTeamId] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -35,16 +44,34 @@ export function GamesPanel() {
     fetchGames();
   }, [fetchGames]);
 
+  // Fetch sports and teams for create form
+  useEffect(() => {
+    if (!showCreate) return;
+    Promise.all([getSports(), getTeams()]).then(([s, t]) => {
+      setSports(s.sports);
+      setTeams(t.teams);
+      if (s.sports.length > 0 && !sportId) {
+        setSportId(s.sports[0].id);
+      }
+    }).catch(() => {});
+  }, [showCreate]);
+
+  const filteredTeams = teams.filter((t) => t.sportId === sportId);
+
   const handleCreate = async () => {
-    if (!homeTeam.trim() || !awayTeam.trim()) {
-      setCreateError('All fields are required');
+    if (!homeTeamId || !awayTeamId) {
+      setCreateError('Both teams are required');
+      return;
+    }
+    if (homeTeamId === awayTeamId) {
+      setCreateError('Home and away teams must be different');
       return;
     }
     setCreateError(null);
     try {
-      await createGame(sportId, homeTeam.trim(), awayTeam.trim());
-      setHomeTeam('');
-      setAwayTeam('');
+      await createGame(sportId, homeTeamId, awayTeamId);
+      setHomeTeamId('');
+      setAwayTeamId('');
       setShowCreate(false);
       await fetchGames();
     } catch (err) {
@@ -104,28 +131,40 @@ export function GamesPanel() {
         <div className="bg-surface-overlay rounded-lg p-4 mb-4 space-y-2" data-testid="create-form">
           <select
             value={sportId}
-            onChange={(e) => setSportId(e.target.value)}
+            onChange={(e) => {
+              setSportId(e.target.value);
+              setHomeTeamId('');
+              setAwayTeamId('');
+            }}
             className="w-full bg-surface-input text-text-primary rounded px-3 py-2 text-sm"
             data-testid="create-sport"
           >
-            <option value="baseball">Baseball</option>
-            <option value="basketball">Basketball</option>
-            <option value="soccer">Soccer</option>
+            {sports.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
           </select>
-          <input
-            placeholder="Home Team"
-            value={homeTeam}
-            onChange={(e) => setHomeTeam(e.target.value)}
-            className="w-full bg-surface-input text-text-primary rounded px-3 py-2 text-sm placeholder-text-muted"
+          <select
+            value={homeTeamId}
+            onChange={(e) => setHomeTeamId(e.target.value)}
+            className="w-full bg-surface-input text-text-primary rounded px-3 py-2 text-sm"
             data-testid="create-home"
-          />
-          <input
-            placeholder="Away Team"
-            value={awayTeam}
-            onChange={(e) => setAwayTeam(e.target.value)}
-            className="w-full bg-surface-input text-text-primary rounded px-3 py-2 text-sm placeholder-text-muted"
+          >
+            <option value="">Select Home Team</option>
+            {filteredTeams.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.abbreviation})</option>
+            ))}
+          </select>
+          <select
+            value={awayTeamId}
+            onChange={(e) => setAwayTeamId(e.target.value)}
+            className="w-full bg-surface-input text-text-primary rounded px-3 py-2 text-sm"
             data-testid="create-away"
-          />
+          >
+            <option value="">Select Away Team</option>
+            {filteredTeams.filter((t) => t.id !== homeTeamId).map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.abbreviation})</option>
+            ))}
+          </select>
           {createError && <p className="text-red-400 text-sm" data-testid="create-error">{createError}</p>}
           <button
             onClick={handleCreate}
@@ -160,10 +199,24 @@ export function GamesPanel() {
               className="bg-surface-raised border border-border rounded-lg px-4 py-3 flex items-center justify-between"
               data-testid={`admin-game-${game.id}`}
             >
-              <div>
+              <div className="flex items-center gap-3">
+                {game.homeTeam?.logoPath && (
+                  <img
+                    src={`${HUB_REST_URL}${game.homeTeam.logoPath}`}
+                    alt={game.homeTeam.name}
+                    className="w-6 h-6 object-contain"
+                  />
+                )}
                 <span className="text-text-primary font-medium">
-                  {game.homeTeam} vs {game.awayTeam}
+                  {getMatchupDisplay(game)}
                 </span>
+                {game.awayTeam?.logoPath && (
+                  <img
+                    src={`${HUB_REST_URL}${game.awayTeam.logoPath}`}
+                    alt={game.awayTeam.name}
+                    className="w-6 h-6 object-contain"
+                  />
+                )}
                 <span className="text-text-muted text-xs ml-2 capitalize">{game.sportId}</span>
               </div>
               <div className="flex items-center gap-2">

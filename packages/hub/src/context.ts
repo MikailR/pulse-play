@@ -3,6 +3,7 @@ import { PositionTracker } from './modules/position/tracker.js';
 import { ClearnodeClient } from './modules/clearnode/client.js';
 import { OracleService } from './modules/oracle/oracle.js';
 import { GameManager } from './modules/game/manager.js';
+import { TeamManager } from './modules/team/manager.js';
 import { UserTracker } from './modules/user/tracker.js';
 import { WsManager } from './api/ws.js';
 import { logger as defaultLogger } from './logger.js';
@@ -16,12 +17,14 @@ export interface AppContext {
   marketManager: MarketManager;
   positionTracker: PositionTracker;
   gameManager: GameManager;
+  teamManager: TeamManager;
   userTracker: UserTracker;
   clearnodeClient: ClearnodeClient;
   oracle: OracleService;
   ws: WsManager;
   log: Logger;
   transactionFeePercent: number;
+  uploadsDir?: string;
 }
 
 /**
@@ -33,7 +36,7 @@ export const DEFAULT_TEST_CATEGORY_ID = 'pitching';
 
 /**
  * Creates an AppContext suitable for testing.
- * Uses real DB-backed MarketManager/PositionTracker/GameManager/UserTracker
+ * Uses real DB-backed MarketManager/PositionTracker/GameManager/TeamManager/UserTracker
  * with an in-memory SQLite database, seeded with defaults + a default game.
  * ClearnodeClient is mocked.
  */
@@ -43,12 +46,12 @@ export function createTestContext(
   const db = createTestDb();
   seedDefaults(db);
 
-  // Seed a default game for backward compatibility
+  // Seed a default game for backward compatibility (uses seeded team IDs)
   db.insert(games).values({
     id: DEFAULT_TEST_GAME_ID,
     sportId: 'baseball',
-    homeTeam: 'NYY',
-    awayTeam: 'BOS',
+    homeTeamId: 'nyy',
+    awayTeamId: 'bos',
     status: 'ACTIVE',
     createdAt: Date.now(),
   }).run();
@@ -72,6 +75,7 @@ export function createTestContext(
     marketManager: new MarketManager(db),
     positionTracker: new PositionTracker(db),
     gameManager: new GameManager(db),
+    teamManager: new TeamManager(db),
     userTracker: new UserTracker(db),
     clearnodeClient: mockClearnode,
     oracle: new OracleService(),

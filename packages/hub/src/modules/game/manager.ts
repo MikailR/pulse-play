@@ -1,17 +1,18 @@
 import { eq } from 'drizzle-orm';
 import type { Game, GameStatus } from './types.js';
 import type { DrizzleDB } from '../../db/connection.js';
-import { games } from '../../db/schema.js';
+import { games, teams } from '../../db/schema.js';
 
 function toGame(row: typeof games.$inferSelect): Game {
   return {
     id: row.id,
     sportId: row.sportId,
-    homeTeam: row.homeTeam,
-    awayTeam: row.awayTeam,
+    homeTeamId: row.homeTeamId,
+    awayTeamId: row.awayTeamId,
     status: row.status as GameStatus,
     startedAt: row.startedAt,
     completedAt: row.completedAt,
+    imagePath: row.imagePath,
     metadata: row.metadata,
     createdAt: row.createdAt,
   };
@@ -24,18 +25,36 @@ export class GameManager {
     this.db = db;
   }
 
-  createGame(sportId: string, homeTeam: string, awayTeam: string, id?: string): Game {
-    const gameId = id ?? `${homeTeam.toLowerCase()}-${awayTeam.toLowerCase()}-${Date.now()}`;
+  createGame(sportId: string, homeTeamId: string, awayTeamId: string, id?: string): Game {
+    // Validate both teams exist and belong to the sport
+    const homeTeam = this.db.select().from(teams).where(eq(teams.id, homeTeamId)).get();
+    if (!homeTeam) {
+      throw new Error(`Home team '${homeTeamId}' not found`);
+    }
+    if (homeTeam.sportId !== sportId) {
+      throw new Error(`Home team '${homeTeamId}' does not belong to sport '${sportId}'`);
+    }
+
+    const awayTeam = this.db.select().from(teams).where(eq(teams.id, awayTeamId)).get();
+    if (!awayTeam) {
+      throw new Error(`Away team '${awayTeamId}' not found`);
+    }
+    if (awayTeam.sportId !== sportId) {
+      throw new Error(`Away team '${awayTeamId}' does not belong to sport '${sportId}'`);
+    }
+
+    const gameId = id ?? `${homeTeam.abbreviation.toLowerCase()}-${awayTeam.abbreviation.toLowerCase()}-${Date.now()}`;
     const now = Date.now();
 
     this.db.insert(games).values({
       id: gameId,
       sportId,
-      homeTeam,
-      awayTeam,
+      homeTeamId,
+      awayTeamId,
       status: 'SCHEDULED',
       startedAt: null,
       completedAt: null,
+      imagePath: null,
       metadata: null,
       createdAt: now,
     }).run();
@@ -68,6 +87,12 @@ export class GameManager {
       .where(eq(games.id, gameId))
       .run();
 
+    return this.getGameOrThrow(gameId);
+  }
+
+  setImagePath(gameId: string, imagePath: string): Game {
+    this.getGameOrThrow(gameId);
+    this.db.update(games).set({ imagePath }).where(eq(games.id, gameId)).run();
     return this.getGameOrThrow(gameId);
   }
 

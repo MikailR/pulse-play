@@ -23,6 +23,8 @@
   "dependencies": {
     "@erc7824/nitrolite": "^0.5.3",
     "@fastify/cors": "^11.2.0",
+    "@fastify/multipart": "^9.4.0",
+    "@fastify/static": "^9.0.0",
     "@fastify/websocket": "^11.2.0",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.2.3",

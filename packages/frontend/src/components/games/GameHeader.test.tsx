@@ -11,11 +11,14 @@ jest.mock('next/link', () => {
 const baseGame: Game = {
   id: 'game-1',
   sportId: 'baseball',
-  homeTeam: 'Yankees',
-  awayTeam: 'Red Sox',
+  homeTeamId: 'nyy',
+  awayTeamId: 'bos',
+  homeTeam: { id: 'nyy', sportId: 'baseball', name: 'Yankees', abbreviation: 'NYY', logoPath: null, createdAt: 1000 },
+  awayTeam: { id: 'bos', sportId: 'baseball', name: 'Red Sox', abbreviation: 'BOS', logoPath: null, createdAt: 1000 },
   status: 'ACTIVE',
   startedAt: Date.now(),
   completedAt: null,
+  imagePath: null,
   metadata: null,
   createdAt: Date.now(),
 };

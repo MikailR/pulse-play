@@ -20,16 +20,28 @@ export const marketCategories = sqliteTable('market_categories', {
   createdAt: integer('created_at').notNull(),
 });
 
+// ── Teams ───────────────────────────────────────────────────────────────────
+
+export const teams = sqliteTable('teams', {
+  id: text('id').primaryKey(),
+  sportId: text('sport_id').notNull().references(() => sports.id),
+  name: text('name').notNull(),
+  abbreviation: text('abbreviation').notNull(),
+  logoPath: text('logo_path'),
+  createdAt: integer('created_at').notNull(),
+});
+
 // ── Games ───────────────────────────────────────────────────────────────────
 
 export const games = sqliteTable('games', {
   id: text('id').primaryKey(),
   sportId: text('sport_id').notNull().references(() => sports.id),
-  homeTeam: text('home_team').notNull(),
-  awayTeam: text('away_team').notNull(),
+  homeTeamId: text('home_team_id').notNull().references(() => teams.id),
+  awayTeamId: text('away_team_id').notNull().references(() => teams.id),
   status: text('status').notNull().default('SCHEDULED'),
   startedAt: integer('started_at'),
   completedAt: integer('completed_at'),
+  imagePath: text('image_path'),
   metadata: text('metadata'),
   createdAt: integer('created_at').notNull(),
 });

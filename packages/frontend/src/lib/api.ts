@@ -18,6 +18,7 @@ import type {
   UserFaucetResponse,
   Sport,
   MarketCategory,
+  Team,
   Game,
   UserStats,
   Settlement,
@@ -82,6 +83,114 @@ export async function getSportCategories(sportId: string): Promise<{ sportId: st
   return handleResponse(response);
 }
 
+export async function createSport(name: string, description?: string, id?: string): Promise<{ success: boolean; sport: Sport }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description, id }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateSport(sportId: string, updates: { name?: string; description?: string }): Promise<{ success: boolean; sport: Sport }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports/${sportId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteSport(sportId: string): Promise<{ success: boolean }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports/${sportId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function createCategory(
+  sportId: string, name: string, outcomes: string[], description?: string,
+): Promise<{ success: boolean; category: MarketCategory }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports/${sportId}/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, outcomes, description }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateCategory(
+  sportId: string, categoryId: string, updates: { name?: string; outcomes?: string[]; description?: string },
+): Promise<{ success: boolean; category: MarketCategory }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports/${sportId}/categories/${categoryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteCategory(sportId: string, categoryId: string): Promise<{ success: boolean }> {
+  const response = await fetch(`${HUB_REST_URL}/api/sports/${sportId}/categories/${categoryId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+// ── Team Endpoints ──
+
+export async function getTeams(sportId?: string): Promise<{ teams: Team[] }> {
+  const qs = sportId ? `?sportId=${sportId}` : '';
+  const response = await fetch(`${HUB_REST_URL}/api/teams${qs}`);
+  return handleResponse(response);
+}
+
+export async function getTeam(teamId: string): Promise<{ team: Team }> {
+  const response = await fetch(`${HUB_REST_URL}/api/teams/${teamId}`);
+  return handleResponse(response);
+}
+
+export async function createTeam(
+  sportId: string, name: string, abbreviation: string, id?: string,
+): Promise<{ success: boolean; team: Team }> {
+  const response = await fetch(`${HUB_REST_URL}/api/teams`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sportId, name, abbreviation, id }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateTeam(teamId: string, updates: { name?: string; abbreviation?: string }): Promise<{ success: boolean; team: Team }> {
+  const response = await fetch(`${HUB_REST_URL}/api/teams/${teamId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteTeam(teamId: string): Promise<{ success: boolean }> {
+  const response = await fetch(`${HUB_REST_URL}/api/teams/${teamId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function uploadTeamLogo(teamId: string, file: File): Promise<{ success: boolean; team: Team }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${HUB_REST_URL}/api/teams/${teamId}/logo`, {
+    method: 'POST',
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
+export async function uploadGameImage(gameId: string, file: File): Promise<{ success: boolean; game: Game }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${HUB_REST_URL}/api/games/${gameId}/image`, {
+    method: 'POST',
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 // ── Game Endpoints ──
 
 export async function getGames(filters?: { sportId?: string; status?: string }): Promise<{ games: Game[] }> {
@@ -100,14 +209,14 @@ export async function getGame(gameId: string): Promise<{ game: Game; markets: Ma
 
 export async function createGame(
   sportId: string,
-  homeTeam: string,
-  awayTeam: string,
+  homeTeamId: string,
+  awayTeamId: string,
   id?: string
 ): Promise<{ success: boolean; game: Game }> {
   const response = await fetch(`${HUB_REST_URL}/api/games`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sportId, homeTeam, awayTeam, id }),
+    body: JSON.stringify({ sportId, homeTeamId, awayTeamId, id }),
   });
   return handleResponse(response);
 }

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getGames, getSports, createGame, activateGame } from '@/lib/api';
-import type { Game, Sport } from '@/lib/types';
+import { getGames, getSports, getTeams, createGame, activateGame } from '@/lib/api';
+import type { Game, Sport, Team } from '@/lib/types';
 
 interface GameSelectorProps {
   className?: string;
@@ -10,9 +10,16 @@ interface GameSelectorProps {
   onSelect: (game: Game) => void;
 }
 
+function getMatchupDisplay(game: Game) {
+  const home = game.homeTeam?.abbreviation ?? game.homeTeamId;
+  const away = game.awayTeam?.abbreviation ?? game.awayTeamId;
+  return `${home} vs ${away}`;
+}
+
 export function GameSelector({ className = '', selected, onSelect }: GameSelectorProps) {
   const [games, setGames] = useState<Game[]>([]);
   const [sports, setSports] = useState<Sport[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -20,8 +27,8 @@ export function GameSelector({ className = '', selected, onSelect }: GameSelecto
 
   // Create form fields
   const [newSportId, setNewSportId] = useState('');
-  const [newHomeTeam, setNewHomeTeam] = useState('');
-  const [newAwayTeam, setNewAwayTeam] = useState('');
+  const [homeTeamId, setHomeTeamId] = useState('');
+  const [awayTeamId, setAwayTeamId] = useState('');
 
   const fetchGames = useCallback(async () => {
     try {
@@ -36,16 +43,17 @@ export function GameSelector({ className = '', selected, onSelect }: GameSelecto
 
   useEffect(() => {
     fetchGames();
-    getSports()
-      .then((data) => {
-        setSports(data.sports);
-        if (data.sports.length > 0) setNewSportId(data.sports[0].id);
-      })
-      .catch(() => {});
+    Promise.all([getSports(), getTeams()]).then(([sData, tData]) => {
+      setSports(sData.sports);
+      setTeams(tData.teams);
+      if (sData.sports.length > 0) setNewSportId(sData.sports[0].id);
+    }).catch(() => {});
   }, [fetchGames]);
 
+  const filteredTeams = teams.filter((t) => t.sportId === newSportId);
+
   const handleCreateGame = async () => {
-    if (!newSportId || !newHomeTeam.trim() || !newAwayTeam.trim()) {
+    if (!newSportId || !homeTeamId || !awayTeamId) {
       setCreateError('All fields are required');
       return;
     }
@@ -54,12 +62,12 @@ export function GameSelector({ className = '', selected, onSelect }: GameSelecto
     setCreateError(null);
 
     try {
-      const result = await createGame(newSportId, newHomeTeam.trim(), newAwayTeam.trim());
+      const result = await createGame(newSportId, homeTeamId, awayTeamId);
       const activateResult = await activateGame(result.game.id);
       onSelect(activateResult.game);
       setShowCreate(false);
-      setNewHomeTeam('');
-      setNewAwayTeam('');
+      setHomeTeamId('');
+      setAwayTeamId('');
       await fetchGames();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create game');
@@ -85,7 +93,11 @@ export function GameSelector({ className = '', selected, onSelect }: GameSelecto
         <div className="mb-4 p-4 bg-surface-overlay rounded-lg space-y-3" data-testid="create-game-form">
           <select
             value={newSportId}
-            onChange={(e) => setNewSportId(e.target.value)}
+            onChange={(e) => {
+              setNewSportId(e.target.value);
+              setHomeTeamId('');
+              setAwayTeamId('');
+            }}
             className="w-full bg-surface-input text-text-primary rounded-lg px-3 py-2 text-sm"
             data-testid="create-game-sport"
           >
@@ -95,22 +107,28 @@ export function GameSelector({ className = '', selected, onSelect }: GameSelecto
               </option>
             ))}
           </select>
-          <input
-            type="text"
-            placeholder="Home Team"
-            value={newHomeTeam}
-            onChange={(e) => setNewHomeTeam(e.target.value)}
-            className="w-full bg-surface-input text-text-primary rounded-lg px-3 py-2 text-sm placeholder-text-muted"
+          <select
+            value={homeTeamId}
+            onChange={(e) => setHomeTeamId(e.target.value)}
+            className="w-full bg-surface-input text-text-primary rounded-lg px-3 py-2 text-sm"
             data-testid="create-game-home"
-          />
-          <input
-            type="text"
-            placeholder="Away Team"
-            value={newAwayTeam}
-            onChange={(e) => setNewAwayTeam(e.target.value)}
-            className="w-full bg-surface-input text-text-primary rounded-lg px-3 py-2 text-sm placeholder-text-muted"
+          >
+            <option value="">Select Home Team</option>
+            {filteredTeams.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.abbreviation})</option>
+            ))}
+          </select>
+          <select
+            value={awayTeamId}
+            onChange={(e) => setAwayTeamId(e.target.value)}
+            className="w-full bg-surface-input text-text-primary rounded-lg px-3 py-2 text-sm"
             data-testid="create-game-away"
-          />
+          >
+            <option value="">Select Away Team</option>
+            {filteredTeams.filter((t) => t.id !== homeTeamId).map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.abbreviation})</option>
+            ))}
+          </select>
           {createError && (
             <p className="text-red-400 text-sm" data-testid="create-game-error">
               {createError}
@@ -150,7 +168,7 @@ export function GameSelector({ className = '', selected, onSelect }: GameSelecto
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium">
-                  {game.homeTeam} vs {game.awayTeam}
+                  {getMatchupDisplay(game)}
                 </span>
                 <span
                   className={`px-2 py-0.5 rounded text-xs ${

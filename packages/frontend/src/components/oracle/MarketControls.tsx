@@ -49,7 +49,7 @@ export function MarketControls({
 
   const ensureGame = async (): Promise<string> => {
     if (gameIdRef.current) return gameIdRef.current;
-    const gameRes = await createGame('baseball', 'Demo Home', 'Demo Away');
+    const gameRes = await createGame('baseball', 'nyy', 'bos');
     await activateGame(gameRes.game.id);
     gameIdRef.current = gameRes.game.id;
     return gameRes.game.id;

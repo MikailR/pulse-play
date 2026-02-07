@@ -6,6 +6,7 @@ import type {
   Outcome,
   Position,
   MarketSummary,
+  GameSummary,
 } from '../types.js';
 
 export interface HubClientConfig {
@@ -48,19 +49,25 @@ export class HubClient {
     return this.post('/api/oracle/market/open', { gameId, categoryId });
   }
 
-  /** Close the current market. */
-  async closeMarket(): Promise<{ success: boolean; marketId: string }> {
-    return this.post('/api/oracle/market/close', {});
+  /** Close a market. Passes optional gameId/categoryId to target a specific market. */
+  async closeMarket(gameId?: string, categoryId?: string): Promise<{ success: boolean; marketId: string }> {
+    const body: Record<string, string> = {};
+    if (gameId) body.gameId = gameId;
+    if (categoryId) body.categoryId = categoryId;
+    return this.post('/api/oracle/market/close', body);
   }
 
-  /** Resolve the market with an outcome. */
-  async resolveMarket(outcome: Outcome): Promise<{ success: boolean; marketId: string; outcome: string; winners: number; losers: number; totalPayout: number }> {
-    return this.post('/api/oracle/outcome', { outcome });
+  /** Resolve a market with an outcome. Passes optional gameId/categoryId to target a specific market. */
+  async resolveMarket(outcome: Outcome, gameId?: string, categoryId?: string): Promise<{ success: boolean; marketId: string; outcome: string; winners: number; losers: number; totalPayout: number }> {
+    const body: Record<string, string> = { outcome };
+    if (gameId) body.gameId = gameId;
+    if (categoryId) body.categoryId = categoryId;
+    return this.post('/api/oracle/outcome', body);
   }
 
   /** Create a game. */
-  async createGame(sportId: string, homeTeam: string, awayTeam: string): Promise<{ success: boolean; game: { id: string; status: string } }> {
-    return this.post('/api/games', { sportId, homeTeam, awayTeam });
+  async createGame(sportId: string, homeTeamId: string, awayTeamId: string): Promise<{ success: boolean; game: { id: string; status: string } }> {
+    return this.post('/api/games', { sportId, homeTeamId, awayTeamId });
   }
 
   /** Activate a game. */
@@ -76,6 +83,21 @@ export class HubClient {
   /** Get categories for a sport. */
   async getSportCategories(sportId: string): Promise<{ categories: Array<{ id: string; name: string; outcomes: string[] }> }> {
     return this.get(`/api/sports/${sportId}/categories`);
+  }
+
+  /** Get all games, with optional filters. */
+  async getGames(filters?: { sportId?: string; status?: string }): Promise<{ games: GameSummary[] }> {
+    const params = new URLSearchParams();
+    if (filters?.sportId) params.set('sportId', filters.sportId);
+    if (filters?.status) params.set('status', filters.status);
+    const qs = params.toString();
+    return this.get(`/api/games${qs ? '?' + qs : ''}`);
+  }
+
+  /** Get teams, optionally filtered by sport. */
+  async getTeams(sportId?: string): Promise<{ teams: Array<{ id: string; name: string; abbreviation: string; sportId: string }> }> {
+    const qs = sportId ? `?sportId=${sportId}` : '';
+    return this.get(`/api/teams${qs}`);
   }
 
   /** Get all markets. */

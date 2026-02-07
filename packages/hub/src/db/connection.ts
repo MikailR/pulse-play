@@ -53,14 +53,24 @@ function pushSchema(db: DrizzleDB): void {
     created_at INTEGER NOT NULL
   )`);
 
+  db.run(sql`CREATE TABLE IF NOT EXISTS teams (
+    id TEXT PRIMARY KEY,
+    sport_id TEXT NOT NULL REFERENCES sports(id),
+    name TEXT NOT NULL,
+    abbreviation TEXT NOT NULL,
+    logo_path TEXT,
+    created_at INTEGER NOT NULL
+  )`);
+
   db.run(sql`CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY,
     sport_id TEXT NOT NULL REFERENCES sports(id),
-    home_team TEXT NOT NULL,
-    away_team TEXT NOT NULL,
+    home_team_id TEXT NOT NULL REFERENCES teams(id),
+    away_team_id TEXT NOT NULL REFERENCES teams(id),
     status TEXT NOT NULL DEFAULT 'SCHEDULED',
     started_at INTEGER,
     completed_at INTEGER,
+    image_path TEXT,
     metadata TEXT,
     created_at INTEGER NOT NULL
   )`);

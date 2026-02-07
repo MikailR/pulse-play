@@ -17,8 +17,8 @@ describe('UserTracker', () => {
     db.insert(games).values({
       id: GAME_ID,
       sportId: 'baseball',
-      homeTeam: 'NYY',
-      awayTeam: 'BOS',
+      homeTeamId: 'nyy',
+      awayTeamId: 'bos',
       status: 'ACTIVE',
       createdAt: Date.now(),
     }).run();

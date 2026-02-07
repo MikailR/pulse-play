@@ -36,8 +36,8 @@ describe('MarketControls', () => {
     mockRefetch.mockReset();
     mockCreateGame.mockReset();
     mockActivateGame.mockReset();
-    mockCreateGame.mockResolvedValue({ success: true, game: { id: 'game-1', sportId: 'baseball', homeTeam: 'Demo Home', awayTeam: 'Demo Away', status: 'ACTIVE' as const, startedAt: Date.now(), completedAt: null, metadata: null, createdAt: Date.now() } });
-    mockActivateGame.mockResolvedValue({ success: true, game: { id: 'game-1', sportId: 'baseball', homeTeam: 'Demo Home', awayTeam: 'Demo Away', status: 'ACTIVE' as const, startedAt: Date.now(), completedAt: null, metadata: null, createdAt: Date.now() } });
+    mockCreateGame.mockResolvedValue({ success: true, game: { id: 'game-1', sportId: 'baseball', homeTeamId: 'nyy', awayTeamId: 'bos', status: 'ACTIVE' as const, startedAt: Date.now(), completedAt: null, imagePath: null, metadata: null, createdAt: Date.now() } });
+    mockActivateGame.mockResolvedValue({ success: true, game: { id: 'game-1', sportId: 'baseball', homeTeamId: 'nyy', awayTeamId: 'bos', status: 'ACTIVE' as const, startedAt: Date.now(), completedAt: null, imagePath: null, metadata: null, createdAt: Date.now() } });
   });
 
   it('shows NO MARKET when no market exists', () => {
@@ -67,7 +67,7 @@ describe('MarketControls', () => {
     await user.click(screen.getByTestId('open-market-button'));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith('baseball', 'Demo Home', 'Demo Away');
+      expect(mockCreateGame).toHaveBeenCalledWith('baseball', 'nyy', 'bos');
     });
     expect(mockActivateGame).toHaveBeenCalledWith('game-1');
     expect(mockOpenMarket).toHaveBeenCalledWith({ gameId: 'game-1', categoryId: 'pitching' });

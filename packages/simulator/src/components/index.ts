@@ -9,3 +9,4 @@ export { HelpOverlay } from './HelpOverlay.js';
 export { PositionsPanel } from './PositionsPanel.js';
 export { SystemInfo } from './SystemInfo.js';
 export { MarketsOverlay } from './MarketsOverlay.js';
+export { GamesOverlay } from './GamesOverlay.js';

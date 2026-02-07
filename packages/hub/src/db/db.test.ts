@@ -23,6 +23,7 @@ describe('DB Module', () => {
         'positions',
         'settlements',
         'sports',
+        'teams',
         'users',
       ]);
     });
@@ -65,8 +66,8 @@ describe('DB Module', () => {
         db.insert(games).values({
           id: 'test-game',
           sportId: 'nonexistent-sport',
-          homeTeam: 'Team A',
-          awayTeam: 'Team B',
+          homeTeamId: 'nonexistent-team',
+          awayTeamId: 'nonexistent-team-2',
           status: 'SCHEDULED',
           createdAt: Date.now(),
         }).run();

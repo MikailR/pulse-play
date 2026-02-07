@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { Game } from '@/lib/types';
+import { HUB_REST_URL } from '@/lib/config';
 
 interface GameCardProps {
   game: Game;
@@ -28,6 +29,17 @@ function getStatusStyle(status: string) {
   return STATUS_STYLES[status] ?? STATUS_STYLES.SCHEDULED;
 }
 
+function getMatchupDisplay(game: Game) {
+  const home = game.homeTeam?.abbreviation ?? game.homeTeamId;
+  const away = game.awayTeam?.abbreviation ?? game.awayTeamId;
+  return `${home} vs ${away}`;
+}
+
+function getTeamLogoUrl(logoPath: string | null | undefined): string | null {
+  if (!logoPath) return null;
+  return `${HUB_REST_URL}${logoPath}`;
+}
+
 export function GameCard({ game, marketCount = 0 }: GameCardProps) {
   const sportStyle = getSportStyle(game.sportId);
   const statusStyle = getStatusStyle(game.status);
@@ -50,9 +62,27 @@ export function GameCard({ game, marketCount = 0 }: GameCardProps) {
           </span>
         </div>
 
-        <h3 className="text-text-primary font-semibold text-lg mb-1" data-testid="game-matchup">
-          {game.homeTeam} vs {game.awayTeam}
-        </h3>
+        <div className="flex items-center justify-center gap-4 mb-1">
+          {game.homeTeam?.logoPath && (
+            <img
+              src={getTeamLogoUrl(game.homeTeam.logoPath)!}
+              alt={game.homeTeam.name}
+              className="w-8 h-8 object-contain"
+              data-testid="home-team-logo"
+            />
+          )}
+          <h3 className="text-text-primary font-semibold text-lg" data-testid="game-matchup">
+            {getMatchupDisplay(game)}
+          </h3>
+          {game.awayTeam?.logoPath && (
+            <img
+              src={getTeamLogoUrl(game.awayTeam.logoPath)!}
+              alt={game.awayTeam.name}
+              className="w-8 h-8 object-contain"
+              data-testid="away-team-logo"
+            />
+          )}
+        </div>
 
         <div className="flex items-center justify-between mt-3 text-sm">
           <span className="text-text-muted" data-testid="game-market-count">

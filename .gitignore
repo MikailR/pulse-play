@@ -9,3 +9,5 @@ coverage/
 .turbo/
 
 */data/
+packages/hub/uploads/*
+!packages/hub/uploads/.gitkeep

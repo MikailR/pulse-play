@@ -7,13 +7,14 @@ interface MarketsOverlayProps {
   markets: MarketSummary[];
   selectedIndex: number;
   height: number;
+  currentGameId?: string | null;
 }
 
 function truncateId(id: string, len = 40): string {
   return id.length > len ? id.slice(0, len) + '..' : id;
 }
 
-export function MarketsOverlay({ markets, selectedIndex, height }: MarketsOverlayProps) {
+export function MarketsOverlay({ markets, selectedIndex, height, currentGameId }: MarketsOverlayProps) {
   const headerLines = 5; // title + separator + header + separator + footer hint
   const visibleCount = Math.max(height - headerLines, 3);
 
@@ -28,7 +29,11 @@ export function MarketsOverlay({ markets, selectedIndex, height }: MarketsOverla
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={2}>
       <Box alignSelf="center">
-        <Text bold color="cyan">MARKETS ({markets.length})</Text>
+        <Text bold color="cyan">
+          {currentGameId
+            ? `MARKETS FOR GAME: ${currentGameId.slice(0, 12)}.. (${markets.length})`
+            : `MARKETS (${markets.length})`}
+        </Text>
       </Box>
       <Box alignSelf="center">
         <Text color="gray">{'─'.repeat(86)}</Text>

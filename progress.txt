@@ -2217,3 +2217,150 @@ Date: 2026-02-07
 ### Verification
 - `npx tsc --noEmit` — zero errors
 - `pnpm --filter @pulse-play/simulator test` — 133 tests passed
+
+---
+
+## Database Upgrades Plan: Steps 1-13 Complete
+Date: 2026-02-07
+Branch: feature/database-upgrades (worktree at ../pulse-play-database-upgrades)
+
+### Summary
+Implemented the full 13-step "Database Sophistication + Admin Management + Account Page" plan.
+
+### Hub Backend (Steps 1-6)
+1. **Teams table + games schema migration** — new `teams` table in schema.ts, games now use `homeTeamId`/`awayTeamId` FK references instead of plain strings, added `imagePath` column
+2. **GameManager updated** — validates team IDs exist and belong to sport, enriches game responses with `homeTeam`/`awayTeam` Team objects via SQL join
+3. **File upload infrastructure** — `@fastify/multipart` + `@fastify/static`, `saveUpload()` utility accepting `uploadsDir` param (avoids `import.meta.url` in Jest), serves files at `/uploads/`
+4. **Sports & Categories CRUD** — POST/PUT/DELETE endpoints for sports and categories with referential integrity checks
+5. **Teams CRUD + logo upload** — full CRUD at `/api/teams`, logo upload via multipart at `/api/teams/:teamId/logo`
+6. **Game routes updated** — POST `/api/games` accepts `homeTeamId`/`awayTeamId`, game image upload at `/api/games/:gameId/image`, responses include enriched team objects
+
+### Frontend (Steps 7-13)
+7. **UsersPanel + LeaderboardPanel** — added error state with retry, refresh button, `useCallback` for fetch
+8. **SportsPanel CRUD UI** — create/edit/delete sports and categories with confirmation dialogs, dynamic outcomes input
+9. **TeamsPanel (new)** — sport filter tabs, team list with logos, create/edit/delete, logo upload via file input
+10. **GamesPanel updated** — team dropdowns instead of text inputs, sport selector filters teams, team logos in game list
+11. **Account page redesign** — UserStatsCard (P&L, win rate, stats grid), SettlementHistoryCard (color-coded table), ActivePositionsCard (positions across all markets), reorganized layout
+12. **Frontend types + API** — added Team interface, updated Game interface (homeTeamId/awayTeamId, optional homeTeam/awayTeam objects, imagePath), added CRUD functions for sports, categories, teams, upload helpers
+13. **Downstream consumers** — GameSelector.tsx uses team dropdowns, MarketControls.tsx uses team IDs, simulator hub-client updated to homeTeamId/awayTeamId
+
+### Test Updates
+- All 9+ test files updated for new Game interface (homeTeamId/awayTeamId/imagePath)
+- GameSelector.test.tsx rewritten: getSports/getTeams mocks, selectOptions instead of type
+- GamesPanel.test.tsx rewritten: same pattern with team dropdowns
+- MarketControls.test.tsx: assertion updated from 'Demo Home'/'Demo Away' to 'nyy'/'bos'
+- Simulator hub-client.test.ts: createGame params updated
+
+### Key Technical Decisions
+- `ctx.uploadsDir?: string` in AppContext avoids import.meta.url issues in Jest
+- saveUpload() accepts uploadsDir as parameter, not import.meta.url
+- Game API responses enriched with full Team objects (not just IDs) for frontend convenience
+- Team dropdowns use sport filter: `filteredTeams = teams.filter(t => t.sportId === sportId)`
+
+### Verification
+- Hub: 28 suites, 431 tests passed (1 skipped — pre-existing)
+- Frontend: 39 suites, 322 tests passed
+- Simulator: 5 suites, 133 tests passed
+
+---
+
+## Simulator Command Rework + Frontend Account Fixes
+Date: 2026-02-07
+Branch: feature/database-upgrades (worktree at ../pulse-play-database-upgrades)
+
+### Summary
+Reworked simulator commands to separate game creation from market opening, added explicit game/market tracking, built games overlay, fixed WebSocket message isolation, and improved frontend account page.
+
+### Simulator Changes
+
+**1. HubClient API updates (hub-client.ts)**
+- Added `getGames(filters?)` → GET /api/games with optional query params
+- Added `getTeams(sportId?)` → GET /api/teams with optional filter
+- Updated `closeMarket(gameId?, categoryId?)` — passes optional IDs to hub
+- Updated `resolveMarket(outcome, gameId?, categoryId?)` — passes optional IDs to hub
+- +6 new tests (23 total hub-client tests)
+
+**2. Explicit game/market tracking state (App.tsx)**
+- Added `currentGameId` / `currentMarketId` state variables as source of truth
+- Added refs (`currentMarketIdRef`, `currentGameIdRef`) for stale closure avoidance
+- WebSocket messages filtered by `currentMarketId`:
+  - ODDS_UPDATE: Only applies if msg.marketId matches
+  - MARKET_STATUS: Only applies if msg.marketId matches
+  - POSITION_ADDED: Only tracks positions for current market
+  - STATE_SYNC: Only used for connectionCount/sessionCounts (no state overwrite)
+  - SESSION_VERSION_UPDATED, SESSION_SETTLED: Applied globally (match by appSessionId)
+
+**3. :create command (NEW)**
+- `:create [sportId] [homeTeamId] [awayTeamId]` — defaults: baseball nyy bos
+- Creates game → activates → sets as currentGameId → clears market state
+- Replaces game creation from old `:open` command
+
+**4. :open reworked — market only**
+- `:open [categoryId]` — defaults: pitching
+- Requires currentGameId (error: "No game loaded. Use :create or :games first")
+- Fetches category outcomes from hub
+- Sets currentMarketId from response
+
+**5. :close and :resolve — explicit IDs**
+- Both now pass gameId/categoryId from adminState.market or currentGameId
+- Prevents hub from acting on wrong global "most recent" market
+
+**6. GamesOverlay (NEW component)**
+- Interactive game selection overlay (similar to MarketsOverlay)
+- Columns: ID, SPORT, HOME, AWAY, STATUS
+- j/k navigation, Enter to load game, Escape to dismiss
+- Shows `*` indicator for current game
+
+**7. :games command → overlay**
+- Previously dumped to event log; now opens interactive GamesOverlay
+- `loadGameFromOverlay(gameId)` sets currentGameId, fetches markets, auto-loads active market
+
+**8. :markets filtered by current game**
+- When currentGameId set, filters market list to that game
+- MarketsOverlay shows game filter header: "MARKETS FOR GAME: {id} (count)"
+
+**9. HelpOverlay updated**
+- New "Game & Market" section with :create and :open (reworked)
+- :games description → "Browse games (overlay)"
+- :markets description → "Browse markets for current game (overlay)"
+
+### Frontend Changes
+
+**10. UserStatsCard error handling**
+- Distinguishes 404 (shows "No activity yet") from other errors (shows error message with retry)
+- Uses `ApiError` import from api.ts for `instanceof` check on status
+- Added `refreshKey` prop — parent can trigger re-fetch after new activity
+- New error state UI with retry button (data-testid="stats-error")
+- +8 new tests in UserStatsCard.test.tsx (NEW file)
+
+**11. Account page layout**
+- Two-column layout: left (2/3) + right (1/3)
+- Left column: UserStatsCard, AccountFaucetCard, SettlementHistoryCard, ActivePositionsCard
+- Right column: AccountBalanceCard, SessionCard
+- UserStatsCard receives refreshKey from parent (re-fetches after faucet fund)
+
+### New Files
+- `simulator/src/components/GamesOverlay.tsx` — interactive game selection overlay
+- `frontend/src/components/account/UserStatsCard.test.tsx` — 8 tests
+
+### Modified Files
+| File | Changes |
+|---|---|
+| simulator/src/core/hub-client.ts | +getGames, +getTeams, updated close/resolve sigs |
+| simulator/src/core/hub-client.test.ts | +6 tests (23 total) |
+| simulator/src/types.ts | +GameSummary type |
+| simulator/src/App.tsx | Reworked commands, tracking state, WS filtering, games overlay |
+| simulator/src/components/GamesOverlay.tsx | NEW |
+| simulator/src/components/MarketsOverlay.tsx | +currentGameId prop, filter header |
+| simulator/src/components/HelpOverlay.tsx | Updated command docs |
+| simulator/src/components/index.ts | +GamesOverlay export |
+| frontend/src/components/account/UserStatsCard.tsx | Error distinction, refreshKey |
+| frontend/src/components/account/UserStatsCard.test.tsx | NEW — 8 tests |
+| frontend/src/app/account/page.tsx | Two-column layout |
+
+### Test Results
+- **Hub:** 28 suites, 431 passed (6 skipped — pre-existing)
+- **Frontend:** 40 suites, 330 passed (was 322, +8 new UserStatsCard tests)
+- **Simulator:** 5 suites, 139 passed (was 133, +6 new hub-client tests)
+- **TypeScript:** Zero compilation errors (simulator + frontend source files)
+- **Total:** 900 passing tests

@@ -246,7 +246,7 @@ describe('api', () => {
         ok: true,
         json: async () => ({
           games: [
-            { id: 'g1', sportId: 'baseball', homeTeam: 'A', awayTeam: 'B', status: 'ACTIVE', startedAt: 1000, completedAt: null, metadata: null, createdAt: 1000 },
+            { id: 'g1', sportId: 'baseball', homeTeamId: 'a', awayTeamId: 'b', status: 'ACTIVE', startedAt: 1000, completedAt: null, imagePath: null, metadata: null, createdAt: 1000 },
           ],
         }),
       });
@@ -274,7 +274,7 @@ describe('api', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          game: { id: 'g1', sportId: 'baseball', homeTeam: 'A', awayTeam: 'B', status: 'ACTIVE', startedAt: 1000, completedAt: null, metadata: null, createdAt: 1000 },
+          game: { id: 'g1', sportId: 'baseball', homeTeamId: 'a', awayTeamId: 'b', status: 'ACTIVE', startedAt: 1000, completedAt: null, imagePath: null, metadata: null, createdAt: 1000 },
           markets: [],
         }),
       });
@@ -291,21 +291,21 @@ describe('api', () => {
         ok: true,
         json: async () => ({
           success: true,
-          game: { id: 'g2', sportId: 'baseball', homeTeam: 'X', awayTeam: 'Y', status: 'SCHEDULED', startedAt: null, completedAt: null, metadata: null, createdAt: 1000 },
+          game: { id: 'g2', sportId: 'baseball', homeTeamId: 'x', awayTeamId: 'y', status: 'SCHEDULED', startedAt: null, completedAt: null, imagePath: null, metadata: null, createdAt: 1000 },
         }),
       });
 
-      const result = await createGame('baseball', 'X', 'Y');
+      const result = await createGame('baseball', 'x', 'y');
 
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:3001/api/games',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ sportId: 'baseball', homeTeam: 'X', awayTeam: 'Y' }),
+          body: JSON.stringify({ sportId: 'baseball', homeTeamId: 'x', awayTeamId: 'y' }),
         })
       );
       expect(result.success).toBe(true);
-      expect(result.game.homeTeam).toBe('X');
+      expect(result.game.homeTeamId).toBe('x');
     });
 
     it('activateGame posts to activate endpoint', async () => {

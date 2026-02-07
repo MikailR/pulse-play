@@ -68,7 +68,7 @@ export function MarketsPanel() {
           <option value="">Select a game...</option>
           {games.map((g) => (
             <option key={g.id} value={g.id}>
-              {g.homeTeam} vs {g.awayTeam} ({g.sportId})
+              {g.homeTeam?.abbreviation ?? g.homeTeamId} vs {g.awayTeam?.abbreviation ?? g.awayTeamId} ({g.sportId})
             </option>
           ))}
         </select>

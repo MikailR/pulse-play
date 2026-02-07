@@ -12,11 +12,14 @@ jest.mock('next/link', () => {
 const baseGame: Game = {
   id: 'game-1',
   sportId: 'baseball',
-  homeTeam: 'Yankees',
-  awayTeam: 'Red Sox',
+  homeTeamId: 'nyy',
+  awayTeamId: 'bos',
+  homeTeam: { id: 'nyy', sportId: 'baseball', name: 'Yankees', abbreviation: 'NYY', logoPath: null, createdAt: 1000 },
+  awayTeam: { id: 'bos', sportId: 'baseball', name: 'Red Sox', abbreviation: 'BOS', logoPath: null, createdAt: 1000 },
   status: 'ACTIVE',
   startedAt: Date.now(),
   completedAt: null,
+  imagePath: null,
   metadata: null,
   createdAt: Date.now(),
 };
@@ -25,7 +28,7 @@ describe('GameCard', () => {
   it('renders game matchup', () => {
     render(<GameCard game={baseGame} />);
 
-    expect(screen.getByTestId('game-matchup')).toHaveTextContent('Yankees vs Red Sox');
+    expect(screen.getByTestId('game-matchup')).toHaveTextContent('NYY vs BOS');
   });
 
   it('renders sport badge', () => {

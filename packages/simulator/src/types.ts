@@ -136,6 +136,21 @@ export interface MarketSummary {
   createdAt: number;
 }
 
+// ── Game summary (for :games overlay) ──
+
+export interface GameSummary {
+  id: string;
+  sportId: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeTeam?: { id: string; name: string; abbreviation: string };
+  awayTeam?: { id: string; name: string; abbreviation: string };
+  status: string;
+  startedAt?: number | null;
+  completedAt?: number | null;
+  createdAt: number;
+}
+
 // ── Hub API types ──
 
 export interface BetRequest {

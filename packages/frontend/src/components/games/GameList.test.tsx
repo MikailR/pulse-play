@@ -22,11 +22,12 @@ const mockUseWebSocket = WebSocketProvider.useWebSocket as jest.Mock;
 const baseGame: Game = {
   id: 'game-1',
   sportId: 'baseball',
-  homeTeam: 'Yankees',
-  awayTeam: 'Red Sox',
+  homeTeamId: 'nyy',
+  awayTeamId: 'bos',
   status: 'ACTIVE',
   startedAt: Date.now(),
   completedAt: null,
+  imagePath: null,
   metadata: null,
   createdAt: Date.now(),
 };
@@ -54,7 +55,7 @@ describe('GameList', () => {
 
   it('renders game cards after loading', async () => {
     mockGetGames.mockResolvedValueOnce({
-      games: [baseGame, { ...baseGame, id: 'game-2', homeTeam: 'Lakers', awayTeam: 'Celtics' }],
+      games: [baseGame, { ...baseGame, id: 'game-2', homeTeamId: 'lal', awayTeamId: 'gsw' }],
     });
 
     render(<GameList />);

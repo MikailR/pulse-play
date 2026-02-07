@@ -12,48 +12,69 @@ describe('GameManager', () => {
   });
 
   describe('createGame', () => {
-    test('creates a game with SCHEDULED status', () => {
-      const game = manager.createGame('baseball', 'NYY', 'BOS', 'nyy-bos-1');
+    test('creates a game with SCHEDULED status using team IDs', () => {
+      const game = manager.createGame('baseball', 'nyy', 'bos', 'nyy-bos-1');
       expect(game.status).toBe('SCHEDULED');
       expect(game.sportId).toBe('baseball');
-      expect(game.homeTeam).toBe('NYY');
-      expect(game.awayTeam).toBe('BOS');
+      expect(game.homeTeamId).toBe('nyy');
+      expect(game.awayTeamId).toBe('bos');
     });
 
-    test('auto-generates ID if not provided', () => {
-      const game = manager.createGame('baseball', 'NYY', 'BOS');
+    test('auto-generates ID from team abbreviations if not provided', () => {
+      const game = manager.createGame('baseball', 'nyy', 'bos');
       expect(game.id).toContain('nyy-bos-');
     });
 
     test('sets createdAt timestamp', () => {
       const before = Date.now();
-      const game = manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+      const game = manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       expect(game.createdAt).toBeGreaterThanOrEqual(before);
     });
 
-    test('new game has null startedAt and completedAt', () => {
-      const game = manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+    test('new game has null startedAt, completedAt, and imagePath', () => {
+      const game = manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       expect(game.startedAt).toBeNull();
       expect(game.completedAt).toBeNull();
+      expect(game.imagePath).toBeNull();
+    });
+
+    test('throws if home team does not exist', () => {
+      expect(() => manager.createGame('baseball', 'nonexistent', 'bos'))
+        .toThrow("Home team 'nonexistent' not found");
+    });
+
+    test('throws if away team does not exist', () => {
+      expect(() => manager.createGame('baseball', 'nyy', 'nonexistent'))
+        .toThrow("Away team 'nonexistent' not found");
+    });
+
+    test('throws if home team does not belong to sport', () => {
+      expect(() => manager.createGame('basketball', 'nyy', 'lal'))
+        .toThrow("Home team 'nyy' does not belong to sport 'basketball'");
+    });
+
+    test('throws if away team does not belong to sport', () => {
+      expect(() => manager.createGame('baseball', 'nyy', 'lal'))
+        .toThrow("Away team 'lal' does not belong to sport 'baseball'");
     });
   });
 
   describe('activateGame', () => {
     test('transitions SCHEDULED → ACTIVE', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+      manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       const game = manager.activateGame('test-1');
       expect(game.status).toBe('ACTIVE');
       expect(game.startedAt).not.toBeNull();
     });
 
     test('throws when game is already ACTIVE', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+      manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       manager.activateGame('test-1');
       expect(() => manager.activateGame('test-1')).toThrow('Cannot activate');
     });
 
     test('throws when game is COMPLETED', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+      manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       manager.activateGame('test-1');
       manager.completeGame('test-1');
       expect(() => manager.activateGame('test-1')).toThrow('Cannot activate');
@@ -62,7 +83,7 @@ describe('GameManager', () => {
 
   describe('completeGame', () => {
     test('transitions ACTIVE → COMPLETED', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+      manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       manager.activateGame('test-1');
       const game = manager.completeGame('test-1');
       expect(game.status).toBe('COMPLETED');
@@ -70,14 +91,14 @@ describe('GameManager', () => {
     });
 
     test('throws when game is SCHEDULED', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+      manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       expect(() => manager.completeGame('test-1')).toThrow('Cannot complete');
     });
   });
 
   describe('getGame', () => {
     test('returns game by ID', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'test-1');
+      manager.createGame('baseball', 'nyy', 'bos', 'test-1');
       const game = manager.getGame('test-1');
       expect(game).not.toBeNull();
       expect(game!.id).toBe('test-1');
@@ -90,8 +111,8 @@ describe('GameManager', () => {
 
   describe('getActiveGames', () => {
     test('returns only ACTIVE games', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'g1');
-      manager.createGame('baseball', 'LAD', 'SFG', 'g2');
+      manager.createGame('baseball', 'nyy', 'bos', 'g1');
+      manager.createGame('baseball', 'lad', 'chc', 'g2');
       manager.activateGame('g1');
 
       const active = manager.getActiveGames();
@@ -102,8 +123,8 @@ describe('GameManager', () => {
 
   describe('getGamesBySport', () => {
     test('filters by sport', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'g1');
-      manager.createGame('basketball', 'LAL', 'GSW', 'g2');
+      manager.createGame('baseball', 'nyy', 'bos', 'g1');
+      manager.createGame('basketball', 'lal', 'gsw', 'g2');
 
       const baseballGames = manager.getGamesBySport('baseball');
       expect(baseballGames).toHaveLength(1);
@@ -113,17 +134,30 @@ describe('GameManager', () => {
 
   describe('getAllGames', () => {
     test('returns all games without filter', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'g1');
-      manager.createGame('basketball', 'LAL', 'GSW', 'g2');
+      manager.createGame('baseball', 'nyy', 'bos', 'g1');
+      manager.createGame('basketball', 'lal', 'gsw', 'g2');
       expect(manager.getAllGames()).toHaveLength(2);
     });
 
     test('filters by status', () => {
-      manager.createGame('baseball', 'NYY', 'BOS', 'g1');
-      manager.createGame('baseball', 'LAD', 'SFG', 'g2');
+      manager.createGame('baseball', 'nyy', 'bos', 'g1');
+      manager.createGame('baseball', 'lad', 'chc', 'g2');
       manager.activateGame('g1');
       expect(manager.getAllGames('ACTIVE')).toHaveLength(1);
       expect(manager.getAllGames('SCHEDULED')).toHaveLength(1);
+    });
+  });
+
+  describe('setImagePath', () => {
+    test('sets image path on a game', () => {
+      manager.createGame('baseball', 'nyy', 'bos', 'g1');
+      const game = manager.setImagePath('g1', '/uploads/games/g1.jpg');
+      expect(game.imagePath).toBe('/uploads/games/g1.jpg');
+    });
+
+    test('throws if game does not exist', () => {
+      expect(() => manager.setImagePath('nonexistent', '/x.jpg'))
+        .toThrow('Game nonexistent not found');
     });
   });
 });

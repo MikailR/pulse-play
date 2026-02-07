@@ -10,6 +10,7 @@ import { CommandBar } from './components/CommandBar.js';
 
 import { HelpOverlay } from './components/HelpOverlay.js';
 import { MarketsOverlay } from './components/MarketsOverlay.js';
+import { GamesOverlay } from './components/GamesOverlay.js';
 import { PositionsPanel, EXPANDED_LINES } from './components/PositionsPanel.js';
 import { SystemInfo } from './components/SystemInfo.js';
 import { WalletManager } from './core/wallet-manager.js';
@@ -28,6 +29,7 @@ import type {
   SimEvent,
   Position,
   MarketSummary,
+  GameSummary,
 } from './types.js';
 import { DEFAULT_SIM_CONFIG } from './types.js';
 
@@ -37,7 +39,7 @@ interface AppProps {
   clearnodeUrl: string;
 }
 
-type UIMode = 'normal' | 'command' | 'help' | 'markets';
+type UIMode = 'normal' | 'command' | 'help' | 'markets' | 'games';
 type ActivePanel = 'wallets' | 'positions' | 'eventLog';
 
 const MAX_EVENT_LOG_SIZE = 100;
@@ -79,11 +81,21 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
   const [positionsExpandedIndex, setPositionsExpandedIndex] = useState<number | null>(null);
   const [marketsList, setMarketsList] = useState<MarketSummary[]>([]);
   const [marketsSelectedIndex, setMarketsSelectedIndex] = useState(0);
+  const [gamesList, setGamesList] = useState<GameSummary[]>([]);
+  const [gamesSelectedIndex, setGamesSelectedIndex] = useState(0);
+
+  // Explicit game/market tracking — source of truth for what the simulator operates on
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
+  const [currentMarketId, setCurrentMarketId] = useState<string | null>(null);
 
   const userScrolledRef = useRef(false);
   const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const outcomesRef = useRef(outcomes);
   useEffect(() => { outcomesRef.current = outcomes; }, [outcomes]);
+  const currentMarketIdRef = useRef(currentMarketId);
+  useEffect(() => { currentMarketIdRef.current = currentMarketId; }, [currentMarketId]);
+  const currentGameIdRef = useRef(currentGameId);
+  useEffect(() => { currentGameIdRef.current = currentGameId; }, [currentGameId]);
 
   // WebSocket connection
   const { connected, messageQueue, queueVersion, error: wsError, reconnect } = useWebSocket(wsUrl);
@@ -215,31 +227,71 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           break;
         }
 
-        case 'open': {
-          // :open [sportId] [categoryId] — defaults to baseball pitching
+        case 'create': {
+          // :create [sportId] [homeTeamId] [awayTeamId] — defaults to baseball nyy bos
           const sportId = parts[1] || 'baseball';
-          const categoryId = parts[2] || 'pitching';
+          const homeTeamId = parts[2] || 'nyy';
+          const awayTeamId = parts[3] || 'bos';
 
-          setLoadingMessage(`Creating game & opening market (${sportId}/${categoryId})...`);
+          setLoadingMessage(`Creating game (${sportId}: ${homeTeamId} vs ${awayTeamId})...`);
           try {
-            // Fetch category outcomes for this sport
+            await hubClient.setGameState(true);
+            const gameRes = await hubClient.createGame(sportId, homeTeamId, awayTeamId);
+            await hubClient.activateGame(gameRes.game.id);
+            setCurrentGameId(gameRes.game.id);
+            setCurrentMarketId(null);
+            setAdminState((prev) => ({
+              ...(prev ?? { market: null, positionCount: 0, connectionCount: 0, prices: [], outcomes: [] }),
+              gameState: { active: true },
+            }));
+            setResults(null);
+            setPositions([]);
+            setLoadingMessage(null);
+            showStatus(`Game created: ${gameRes.game.id} (${sportId})`);
+            addEvent('INFO', `Game created: ${gameRes.game.id} (${sportId}: ${homeTeamId} vs ${awayTeamId})`);
+          } catch (err) {
+            setLoadingMessage(null);
+            showStatus(`Create failed: ${(err as Error).message}`);
+          }
+          break;
+        }
+
+        case 'open': {
+          // :open [categoryId] — opens a market in the current game (default: pitching)
+          const categoryId = parts[1] || 'pitching';
+
+          if (!currentGameId) {
+            showStatus('No game loaded. Use :create or :games first');
+            return;
+          }
+
+          setLoadingMessage(`Opening market (${categoryId})...`);
+          try {
+            // Fetch category outcomes for this sport's category
             let categoryOutcomes: string[] = ['BALL', 'STRIKE'];
             try {
-              const catRes = await hubClient.getSportCategories(sportId);
-              const cat = catRes.categories.find((c) => c.id === categoryId);
-              if (cat && cat.outcomes.length > 0) {
-                categoryOutcomes = cat.outcomes;
+              // Determine sportId from admin state or default
+              const sportId = adminState?.market?.gameId
+                ? 'baseball' // fallback
+                : 'baseball';
+              // Try to get the game to determine sportId
+              const gamesRes = await hubClient.getGames();
+              const game = gamesRes.games.find((g) => g.id === currentGameId);
+              if (game) {
+                const catRes = await hubClient.getSportCategories(game.sportId);
+                const cat = catRes.categories.find((c) => c.id === categoryId);
+                if (cat && cat.outcomes.length > 0) {
+                  categoryOutcomes = cat.outcomes;
+                }
               }
             } catch {
               // Fall back to defaults
             }
 
-            await hubClient.setGameState(true);
-            const gameRes = await hubClient.createGame(sportId, 'Demo Home', 'Demo Away');
-            await hubClient.activateGame(gameRes.game.id);
-            const res = await hubClient.openMarket(gameRes.game.id, categoryId);
+            const res = await hubClient.openMarket(currentGameId, categoryId);
 
             // Store outcomes for resolve validation and sim engine
+            setCurrentMarketId(res.marketId);
             setOutcomes(categoryOutcomes);
             const n = categoryOutcomes.length;
             setPrices(Array(n).fill(1 / n));
@@ -259,7 +311,9 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         }
 
         case 'close': {
-          await hubClient.closeMarket();
+          const gameId = adminState?.market?.gameId ?? currentGameId ?? undefined;
+          const categoryId = adminState?.market?.categoryId ?? undefined;
+          await hubClient.closeMarket(gameId, categoryId);
           showStatus('Market closed');
           break;
         }
@@ -272,7 +326,9 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           }
           simEngine.stop();
           setSimStatus('idle');
-          await hubClient.resolveMarket(outcome);
+          const rGameId = adminState?.market?.gameId ?? currentGameId ?? undefined;
+          const rCategoryId = adminState?.market?.categoryId ?? undefined;
+          await hubClient.resolveMarket(outcome, rGameId, rCategoryId);
           await refreshMMBalance();
           showStatus(`Market resolved: ${outcome}`);
           break;
@@ -383,18 +439,18 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
 
         case 'games': {
           try {
-            const res = await fetch(`${hubRestUrl}/api/games`);
-            const data: any = await res.json();
-            const games = data.games ?? data;
-            if (!Array.isArray(games) || games.length === 0) {
+            setLoadingMessage('Fetching games...');
+            const res = await hubClient.getGames();
+            setLoadingMessage(null);
+            if (res.games.length === 0) {
               showStatus('No games found');
             } else {
-              showStatus(`${games.length} game(s)`);
-              for (const g of games) {
-                addEvent('INFO', `${g.id} [${g.status}] ${g.sportId} — ${g.homeTeam} vs ${g.awayTeam}`);
-              }
+              setGamesList(res.games);
+              setGamesSelectedIndex(0);
+              setUiMode('games');
             }
           } catch (err) {
+            setLoadingMessage(null);
             showStatus(`Games fetch failed: ${(err as Error).message}`);
           }
           break;
@@ -424,10 +480,14 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             setLoadingMessage('Fetching markets...');
             const res = await hubClient.getMarkets();
             setLoadingMessage(null);
-            if (res.markets.length === 0) {
-              showStatus('No markets found');
+            // Filter to current game if one is loaded
+            const filtered = currentGameId
+              ? res.markets.filter((m) => m.gameId === currentGameId)
+              : res.markets;
+            if (filtered.length === 0) {
+              showStatus(currentGameId ? `No markets for game ${currentGameId}` : 'No markets found');
             } else {
-              setMarketsList(res.markets);
+              setMarketsList(filtered);
               setMarketsSelectedIndex(0);
               setUiMode('markets');
             }
@@ -452,7 +512,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     } catch (err) {
       showStatus(`Error: ${(err as Error).message}`);
     }
-  }, [walletManager, hubClient, clearnodePool, simEngine, adminState, outcomes, showStatus, addEvent, reconnect, exit, refreshMMBalance, hubRestUrl]);
+  }, [walletManager, hubClient, clearnodePool, simEngine, adminState, outcomes, currentGameId, showStatus, addEvent, reconnect, exit, refreshMMBalance, hubRestUrl]);
 
   // Load a market from the overlay
   const loadMarketFromOverlay = useCallback(async (marketId: string) => {
@@ -463,6 +523,8 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         hubClient.getPositions(marketId),
       ]);
       if (marketRes.market) {
+        setCurrentMarketId(marketRes.market.id);
+        if (marketRes.market.gameId) setCurrentGameId(marketRes.market.gameId);
         setAdminState((prev) => ({
           ...(prev ?? { gameState: { active: false }, positionCount: 0, connectionCount: 0 }),
           market: {
@@ -496,8 +558,83 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     }
   }, [hubClient, showStatus]);
 
+  // Load a game from the games overlay
+  const loadGameFromOverlay = useCallback(async (gameId: string) => {
+    try {
+      setLoadingMessage('Loading game...');
+      setCurrentGameId(gameId);
+
+      // Fetch markets for this game
+      const marketsRes = await hubClient.getMarkets();
+      const gameMarkets = marketsRes.markets.filter((m) => m.gameId === gameId);
+
+      // Auto-load the most recent open/closed market if one exists
+      const activeMarket = gameMarkets.find((m) => m.status === 'OPEN' || m.status === 'CLOSED')
+        ?? gameMarkets[gameMarkets.length - 1];
+
+      if (activeMarket) {
+        const [marketRes, posRes] = await Promise.all([
+          hubClient.getMarket(activeMarket.id),
+          hubClient.getPositions(activeMarket.id),
+        ]);
+        if (marketRes.market) {
+          setCurrentMarketId(marketRes.market.id);
+          setAdminState((prev) => ({
+            ...(prev ?? { gameState: { active: false }, positionCount: 0, connectionCount: 0 }),
+            market: {
+              id: marketRes.market.id,
+              status: marketRes.market.status,
+              outcome: marketRes.market.outcome,
+              quantities: marketRes.market.quantities ?? [],
+              outcomes: marketRes.outcomes ?? [],
+              b: marketRes.market.b ?? 100,
+              gameId: marketRes.market.gameId,
+              categoryId: marketRes.market.categoryId,
+            },
+            positionCount: posRes.positions.length,
+            prices: marketRes.prices,
+            outcomes: marketRes.outcomes,
+          }));
+          setPrices(marketRes.prices);
+          setOutcomes(marketRes.outcomes);
+          setQuantities(marketRes.market.quantities ?? []);
+          setPositions(posRes.positions);
+        }
+      } else {
+        setCurrentMarketId(null);
+        setPositions([]);
+        setResults(null);
+      }
+
+      setPositionsScrollOffset(0);
+      setPositionsSelectedIndex(0);
+      setPositionsExpandedIndex(null);
+      setLoadingMessage(null);
+      setUiMode('normal');
+      showStatus(`Loaded game ${gameId}${activeMarket ? ` (market: ${activeMarket.id})` : ' (no markets)'}`);
+    } catch (err) {
+      setLoadingMessage(null);
+      showStatus(`Load failed: ${(err as Error).message}`);
+    }
+  }, [hubClient, showStatus]);
+
   // Input routing
   useInput((input, key) => {
+    if (uiMode === 'games') {
+      if (key.escape) { setUiMode('normal'); return; }
+      const scrollDown = input === 'j' || key.downArrow;
+      const scrollUp = input === 'k' || key.upArrow;
+      if (scrollDown) {
+        setGamesSelectedIndex((p) => Math.min(p + 1, gamesList.length - 1));
+      } else if (scrollUp) {
+        setGamesSelectedIndex((p) => Math.max(p - 1, 0));
+      } else if (key.return) {
+        const selected = gamesList[gamesSelectedIndex];
+        if (selected) loadGameFromOverlay(selected.id);
+      }
+      return;
+    }
+
     if (uiMode === 'markets') {
       if (key.escape) { setUiMode('normal'); return; }
       const scrollDown = input === 'j' || key.downArrow;
@@ -600,17 +737,21 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     }
   });
 
-  // Process WebSocket messages
+  // Process WebSocket messages — filter by current game/market where applicable
   const processMessage = useCallback((msg: WsMessage) => {
+    const trackedMarketId = currentMarketIdRef.current;
+
     switch (msg.type) {
       case 'STATE_SYNC':
-        setAdminState(msg.state);
-        setPositions(msg.positions);
-        if (msg.state.prices) setPrices(msg.state.prices);
-        if (msg.state.outcomes) setOutcomes(msg.state.outcomes);
-        if (msg.state.market?.quantities) setQuantities(msg.state.market.quantities);
+        // Use STATE_SYNC for connection count only; don't overwrite tracked market state
+        setAdminState((prev) => {
+          if (!prev) return msg.state;
+          return { ...prev, connectionCount: msg.state.connectionCount, sessionCounts: msg.state.sessionCounts };
+        });
         break;
       case 'ODDS_UPDATE':
+        // Only apply if this update is for our tracked market
+        if (trackedMarketId && msg.marketId !== trackedMarketId) break;
         setPrices(msg.prices);
         setOutcomes(msg.outcomes);
         setQuantities(msg.quantities);
@@ -620,6 +761,8 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         });
         break;
       case 'MARKET_STATUS':
+        // Only apply if this status update is for our tracked market (or we have no market tracked)
+        if (trackedMarketId && msg.marketId !== trackedMarketId) break;
         setAdminState((prev) => {
           if (!prev) return prev;
           const isNew = !prev.market || prev.market.id !== msg.marketId;
@@ -660,6 +803,8 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         setAdminState((prev) => prev ? { ...prev, gameState: { active: msg.active } } : prev);
         break;
       case 'POSITION_ADDED':
+        // Only track positions for our current market
+        if (trackedMarketId && msg.position.marketId !== trackedMarketId) break;
         setAdminState((prev) => {
           if (!prev) return prev;
           const open = (prev.sessionCounts?.open ?? 0) + 1;
@@ -797,11 +942,19 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
       {/* Main content */}
       {uiMode === 'help' ? (
         <HelpOverlay height={rows - 4} />
+      ) : uiMode === 'games' ? (
+        <GamesOverlay
+          games={gamesList}
+          selectedIndex={gamesSelectedIndex}
+          height={rows - 4}
+          currentGameId={currentGameId}
+        />
       ) : uiMode === 'markets' ? (
         <MarketsOverlay
           markets={marketsList}
           selectedIndex={marketsSelectedIndex}
           height={rows - 4}
+          currentGameId={currentGameId}
         />
       ) : (
         <Box flexDirection="column" flexGrow={1}>

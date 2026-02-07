@@ -68,6 +68,7 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: AppContext): void
     ctx.db.run(sql`DELETE FROM positions`);
     ctx.db.run(sql`DELETE FROM markets`);
     ctx.db.run(sql`DELETE FROM games`);
+    ctx.db.run(sql`DELETE FROM teams`);
     ctx.db.run(sql`DELETE FROM market_categories`);
     ctx.db.run(sql`DELETE FROM sports`);
     ctx.db.run(sql`DELETE FROM users`);

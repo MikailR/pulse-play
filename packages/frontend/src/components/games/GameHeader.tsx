@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { Game } from '@/lib/types';
+import { HUB_REST_URL } from '@/lib/config';
 
 interface GameHeaderProps {
   game: Game;
@@ -13,6 +14,12 @@ const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
   ACTIVE: { bg: 'bg-green-500/20', text: 'text-green-400' },
   COMPLETED: { bg: 'bg-blue-500/20', text: 'text-blue-400' },
 };
+
+function getMatchupDisplay(game: Game) {
+  const home = game.homeTeam?.name ?? game.homeTeamId;
+  const away = game.awayTeam?.name ?? game.awayTeamId;
+  return `${home} vs ${away}`;
+}
 
 export function GameHeader({ game, className = '' }: GameHeaderProps) {
   const statusStyle = STATUS_STYLES[game.status] ?? STATUS_STYLES.SCHEDULED;
@@ -42,9 +49,27 @@ export function GameHeader({ game, className = '' }: GameHeaderProps) {
         </span>
       </div>
 
-      <h1 className="text-2xl font-bold font-mono uppercase tracking-wide text-text-primary" data-testid="game-header-matchup">
-        {game.homeTeam} vs {game.awayTeam}
-      </h1>
+      <div className="flex items-center gap-4">
+        {game.homeTeam?.logoPath && (
+          <img
+            src={`${HUB_REST_URL}${game.homeTeam.logoPath}`}
+            alt={game.homeTeam.name}
+            className="w-10 h-10 object-contain"
+            data-testid="home-team-logo"
+          />
+        )}
+        <h1 className="text-2xl font-bold font-mono uppercase tracking-wide text-text-primary" data-testid="game-header-matchup">
+          {getMatchupDisplay(game)}
+        </h1>
+        {game.awayTeam?.logoPath && (
+          <img
+            src={`${HUB_REST_URL}${game.awayTeam.logoPath}`}
+            alt={game.awayTeam.name}
+            className="w-10 h-10 object-contain"
+            data-testid="away-team-logo"
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -2,23 +2,30 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameSelector } from './GameSelector';
 import * as api from '@/lib/api';
-import type { Game } from '@/lib/types';
+import type { Game, Team } from '@/lib/types';
 
 jest.mock('@/lib/api');
 
 const mockGetGames = api.getGames as jest.MockedFunction<typeof api.getGames>;
 const mockGetSports = api.getSports as jest.MockedFunction<typeof api.getSports>;
+const mockGetTeams = api.getTeams as jest.MockedFunction<typeof api.getTeams>;
 const mockCreateGame = api.createGame as jest.MockedFunction<typeof api.createGame>;
 const mockActivateGame = api.activateGame as jest.MockedFunction<typeof api.activateGame>;
+
+const teamNyy: Team = { id: 'nyy', sportId: 'baseball', name: 'Yankees', abbreviation: 'NYY', logoPath: null, createdAt: 1000 };
+const teamBos: Team = { id: 'bos', sportId: 'baseball', name: 'Red Sox', abbreviation: 'BOS', logoPath: null, createdAt: 1000 };
 
 const baseGame: Game = {
   id: 'game-1',
   sportId: 'baseball',
-  homeTeam: 'Yankees',
-  awayTeam: 'Red Sox',
+  homeTeamId: 'nyy',
+  awayTeamId: 'bos',
+  homeTeam: teamNyy,
+  awayTeam: teamBos,
   status: 'ACTIVE',
   startedAt: Date.now(),
   completedAt: null,
+  imagePath: null,
   metadata: null,
   createdAt: Date.now(),
 };
@@ -29,6 +36,7 @@ describe('GameSelector', () => {
   beforeEach(() => {
     mockGetGames.mockReset();
     mockGetSports.mockReset();
+    mockGetTeams.mockReset();
     mockCreateGame.mockReset();
     mockActivateGame.mockReset();
     mockOnSelect.mockReset();
@@ -36,6 +44,9 @@ describe('GameSelector', () => {
       sports: [
         { id: 'baseball', name: 'Baseball', description: null, createdAt: Date.now() },
       ],
+    });
+    mockGetTeams.mockResolvedValue({
+      teams: [teamNyy, teamBos],
     });
   });
 
@@ -56,7 +67,7 @@ describe('GameSelector', () => {
     });
 
     expect(screen.getByTestId('game-option-game-1')).toBeInTheDocument();
-    expect(screen.getByText('Yankees vs Red Sox')).toBeInTheDocument();
+    expect(screen.getByText('NYY vs BOS')).toBeInTheDocument();
   });
 
   it('shows empty state when no games', async () => {
@@ -114,7 +125,7 @@ describe('GameSelector', () => {
 
   it('creates and selects a new game', async () => {
     const user = userEvent.setup();
-    const newGame: Game = { ...baseGame, id: 'game-new', homeTeam: 'Team A', awayTeam: 'Team B' };
+    const newGame: Game = { ...baseGame, id: 'game-new' };
     mockGetGames.mockResolvedValue({ games: [] });
     mockCreateGame.mockResolvedValueOnce({ success: true, game: { ...newGame, status: 'SCHEDULED' as const } });
     mockActivateGame.mockResolvedValueOnce({ success: true, game: newGame });
@@ -126,12 +137,18 @@ describe('GameSelector', () => {
     });
 
     await user.click(screen.getByTestId('toggle-create-form'));
-    await user.type(screen.getByTestId('create-game-home'), 'Team A');
-    await user.type(screen.getByTestId('create-game-away'), 'Team B');
+
+    // Wait for team dropdowns to populate
+    await waitFor(() => {
+      expect(screen.getByTestId('create-game-home')).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByTestId('create-game-home'), 'nyy');
+    await user.selectOptions(screen.getByTestId('create-game-away'), 'bos');
     await user.click(screen.getByTestId('create-game-submit'));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith('baseball', 'Team A', 'Team B');
+      expect(mockCreateGame).toHaveBeenCalledWith('baseball', 'nyy', 'bos');
     });
     expect(mockActivateGame).toHaveBeenCalled();
     expect(mockOnSelect).toHaveBeenCalledWith(newGame);
@@ -167,8 +184,13 @@ describe('GameSelector', () => {
     });
 
     await user.click(screen.getByTestId('toggle-create-form'));
-    await user.type(screen.getByTestId('create-game-home'), 'A');
-    await user.type(screen.getByTestId('create-game-away'), 'B');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('create-game-home')).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByTestId('create-game-home'), 'nyy');
+    await user.selectOptions(screen.getByTestId('create-game-away'), 'bos');
     await user.click(screen.getByTestId('create-game-submit'));
 
     await waitFor(() => {

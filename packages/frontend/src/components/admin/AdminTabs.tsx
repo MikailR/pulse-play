@@ -1,6 +1,6 @@
 'use client';
 
-export type AdminTab = 'sports' | 'games' | 'markets' | 'users' | 'leaderboard';
+export type AdminTab = 'sports' | 'teams' | 'games' | 'markets' | 'users' | 'leaderboard';
 
 interface AdminTabsProps {
   selected: AdminTab;
@@ -10,6 +10,7 @@ interface AdminTabsProps {
 
 const TABS: { id: AdminTab; label: string }[] = [
   { id: 'sports', label: 'Sports' },
+  { id: 'teams', label: 'Teams' },
   { id: 'games', label: 'Games' },
   { id: 'markets', label: 'Markets' },
   { id: 'users', label: 'Users' },

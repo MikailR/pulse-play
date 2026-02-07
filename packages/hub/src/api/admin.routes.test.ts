@@ -70,7 +70,7 @@ describe('Admin Routes', () => {
 
     // After reset, the game is gone but sports+categories are re-seeded.
     // Re-create the game so we can create a new market.
-    ctx.gameManager.createGame('baseball', 'NYY', 'BOS', 'post-reset-game');
+    ctx.gameManager.createGame('baseball', 'nyy', 'bos', 'post-reset-game');
 
     // Market sequence resets because all markets were deleted
     const market = ctx.marketManager.createMarket('post-reset-game', 'pitching');
