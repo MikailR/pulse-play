@@ -22,9 +22,11 @@ export function HelpOverlay({ height }: HelpOverlayProps) {
     { key: ':fund-mm [n]', desc: 'Fund market maker ($10 x n)' },
     { key: ':games', desc: 'List games in event log' },
     { key: ':sports', desc: 'List sports in event log' },
+    { key: ':markets', desc: 'Browse all markets (overlay)' },
     { header: 'Navigation' },
     { key: 'Tab', desc: 'Switch active panel' },
-    { key: 'j / k', desc: 'Scroll active panel' },
+    { key: 'j / k', desc: 'Scroll active panel / move cursor' },
+    { key: 'Enter / e', desc: 'Expand/collapse position detail' },
     { key: 'g / G', desc: 'Top / bottom of panel' },
     { header: 'General' },
     { key: ':', desc: 'Enter command mode' },
@@ -39,9 +41,13 @@ export function HelpOverlay({ height }: HelpOverlayProps) {
   return (
     <Box flexDirection="column" flexGrow={1}>
       {topPad > 0 && <Box height={topPad} />}
-      <Box flexDirection="column" alignItems="center" flexGrow={1}>
-        <Text bold color="cyan">COMMAND REFERENCE</Text>
-        <Text color="gray">{'─'.repeat(40)}</Text>
+      <Box flexDirection="column" flexGrow={1} paddingLeft={4}>
+        <Box alignSelf="center">
+          <Text bold color="cyan">COMMAND REFERENCE</Text>
+        </Box>
+        <Box alignSelf="center">
+          <Text color="gray">{'─'.repeat(40)}</Text>
+        </Box>
         {lines.map((line, idx) => {
           if ('header' in line && line.header) {
             return (
@@ -57,7 +63,9 @@ export function HelpOverlay({ height }: HelpOverlayProps) {
             </Box>
           );
         })}
-        <Text color="gray" dimColor>{'\n'}Press ? or Escape to dismiss</Text>
+        <Box alignSelf="center" marginTop={1}>
+          <Text color="gray" dimColor>Press ? or Escape to dismiss</Text>
+        </Box>
       </Box>
     </Box>
   );

@@ -85,7 +85,7 @@ export function SystemInfo({
         <Text color="green">{state?.sessionCounts?.open ?? 0}</Text>
         <Text color="gray">/</Text>
         <Text color="blue">{state?.sessionCounts?.settled ?? 0}</Text>
-        <Text color="gray" dimColor>(open/settled)</Text>
+        <Text color="gray" dimColor>(bets open/ bets settled)</Text>
       </Box>
     </Box>
   );

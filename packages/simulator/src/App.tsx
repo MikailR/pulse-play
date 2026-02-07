@@ -7,8 +7,9 @@ import { WalletTable } from './components/WalletTable.js';
 import { MarketPanel } from './components/MarketPanel.js';
 import { EventLog } from './components/EventLog.js';
 import { CommandBar } from './components/CommandBar.js';
-import { ResultsPanel } from './components/ResultsPanel.js';
+
 import { HelpOverlay } from './components/HelpOverlay.js';
+import { MarketsOverlay } from './components/MarketsOverlay.js';
 import { PositionsPanel } from './components/PositionsPanel.js';
 import { SystemInfo } from './components/SystemInfo.js';
 import { WalletManager } from './core/wallet-manager.js';
@@ -26,6 +27,7 @@ import type {
   SimResults,
   SimEvent,
   Position,
+  MarketSummary,
 } from './types.js';
 import { DEFAULT_SIM_CONFIG } from './types.js';
 
@@ -35,7 +37,7 @@ interface AppProps {
   clearnodeUrl: string;
 }
 
-type UIMode = 'normal' | 'command' | 'help';
+type UIMode = 'normal' | 'command' | 'help' | 'markets';
 type ActivePanel = 'wallets' | 'positions' | 'eventLog';
 
 const MAX_EVENT_LOG_SIZE = 100;
@@ -66,13 +68,17 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
 
   // UI state
   const [uiMode, setUiMode] = useState<UIMode>('normal');
-  const [activePanel, setActivePanel] = useState<ActivePanel>('wallets');
+  const [activePanel, setActivePanel] = useState<ActivePanel>('positions');
   const [walletsScrollOffset, setWalletsScrollOffset] = useState(0);
   const [positionsScrollOffset, setPositionsScrollOffset] = useState(0);
   const [eventLogScrollOffset, setEventLogScrollOffset] = useState(0);
   const [commandBuffer, setCommandBuffer] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
+  const [positionsSelectedIndex, setPositionsSelectedIndex] = useState(0);
+  const [positionsExpandedIndex, setPositionsExpandedIndex] = useState<number | null>(null);
+  const [marketsList, setMarketsList] = useState<MarketSummary[]>([]);
+  const [marketsSelectedIndex, setMarketsSelectedIndex] = useState(0);
 
   const userScrolledRef = useRef(false);
   const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -80,14 +86,16 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
   // WebSocket connection
   const { connected, lastMessage, error: wsError, reconnect } = useWebSocket(wsUrl);
 
-  // Layout calculations — top/bottom split
-  const topHeight = Math.max(Math.floor((rows - 4) * 0.5), 6);
-  const bottomHeight = Math.max(rows - 4 - topHeight, 4);
-  const walletsVisibleCount = Math.max(topHeight - 3, 1);
-  const positionsVisibleCount = Math.max(topHeight - 5, 1);
-  const eventLogVisibleCount = Math.max(bottomHeight - 2, 1);
-  const barWidth = Math.max(Math.floor(columns * 0.45) - 6, 10);
-  const leftPanelWidth = Math.max(Math.floor(columns * 0.55) - 4, 10);
+  // Layout calculations — all panels visible
+  // Header=1, MarketPanel~5, CommandBar=1 → ~7 fixed rows
+  const mainHeight = Math.max(rows - 8, 10);
+  const positionsHeight = Math.max(Math.floor(mainHeight * 0.5), 4);
+  const eventLogHeight = Math.max(mainHeight - positionsHeight, 4);
+  const walletsVisibleCount = Math.max(mainHeight - 5, 1);
+  const positionsVisibleCount = Math.max(positionsHeight - 5, 1);
+  const eventLogVisibleCount = Math.max(eventLogHeight - 2, 1);
+  const barWidth = Math.max(Math.floor(columns * 0.5) - 6, 10);
+  const leftPanelWidth = Math.max(Math.floor(columns * 0.5) - 4, 10);
 
   // Refresh MM balance from hub
   const refreshMMBalance = useCallback(async () => {
@@ -412,6 +420,25 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           break;
         }
 
+        case 'markets': {
+          try {
+            setLoadingMessage('Fetching markets...');
+            const res = await hubClient.getMarkets();
+            setLoadingMessage(null);
+            if (res.markets.length === 0) {
+              showStatus('No markets found');
+            } else {
+              setMarketsList(res.markets);
+              setMarketsSelectedIndex(0);
+              setUiMode('markets');
+            }
+          } catch (err) {
+            setLoadingMessage(null);
+            showStatus(`Markets fetch failed: ${(err as Error).message}`);
+          }
+          break;
+        }
+
         case 'quit':
         case 'q': {
           simEngine.stop();
@@ -428,8 +455,65 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     }
   }, [walletManager, hubClient, clearnodePool, simEngine, adminState, outcomes, showStatus, addEvent, reconnect, exit, refreshMMBalance, hubRestUrl]);
 
+  // Load a market from the overlay
+  const loadMarketFromOverlay = useCallback(async (marketId: string) => {
+    try {
+      setLoadingMessage('Loading market...');
+      const [marketRes, posRes] = await Promise.all([
+        hubClient.getMarket(marketId),
+        hubClient.getPositions(marketId),
+      ]);
+      if (marketRes.market) {
+        setAdminState((prev) => ({
+          ...(prev ?? { gameState: { active: false }, positionCount: 0, connectionCount: 0 }),
+          market: {
+            id: marketRes.market.id,
+            status: marketRes.market.status,
+            outcome: marketRes.market.outcome,
+            quantities: marketRes.market.quantities ?? [],
+            outcomes: marketRes.outcomes ?? [],
+            b: marketRes.market.b ?? 100,
+            gameId: marketRes.market.gameId,
+            categoryId: marketRes.market.categoryId,
+          },
+          positionCount: posRes.positions.length,
+          prices: marketRes.prices,
+          outcomes: marketRes.outcomes,
+        }));
+        setPrices(marketRes.prices);
+        setOutcomes(marketRes.outcomes);
+        setQuantities(marketRes.market.quantities ?? []);
+        setPositions(posRes.positions);
+        setPositionsScrollOffset(0);
+        setPositionsSelectedIndex(0);
+        setPositionsExpandedIndex(null);
+      }
+      setLoadingMessage(null);
+      setUiMode('normal');
+      showStatus(`Loaded market ${marketId}`);
+    } catch (err) {
+      setLoadingMessage(null);
+      showStatus(`Load failed: ${(err as Error).message}`);
+    }
+  }, [hubClient, showStatus]);
+
   // Input routing
   useInput((input, key) => {
+    if (uiMode === 'markets') {
+      if (key.escape) { setUiMode('normal'); return; }
+      const scrollDown = input === 'j' || key.downArrow;
+      const scrollUp = input === 'k' || key.upArrow;
+      if (scrollDown) {
+        setMarketsSelectedIndex((p) => Math.min(p + 1, marketsList.length - 1));
+      } else if (scrollUp) {
+        setMarketsSelectedIndex((p) => Math.max(p - 1, 0));
+      } else if (key.return) {
+        const selected = marketsList[marketsSelectedIndex];
+        if (selected) loadMarketFromOverlay(selected.id);
+      }
+      return;
+    }
+
     if (uiMode === 'help') {
       if (input === '?' || key.escape) setUiMode('normal');
       return;
@@ -454,9 +538,9 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
     if (input === ':') { setUiMode('command'); setCommandBuffer(''); return; }
     if (key.tab) {
       setActivePanel((p) => {
-        if (p === 'wallets') return 'positions';
         if (p === 'positions') return 'eventLog';
-        return 'wallets';
+        if (p === 'eventLog') return 'wallets';
+        return 'positions';
       });
       return;
     }
@@ -473,11 +557,35 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
       else if (goTop) setWalletsScrollOffset(0);
       else if (goBottom) setWalletsScrollOffset(maxOffset);
     } else if (activePanel === 'positions') {
-      const maxOffset = Math.max(0, positions.length - positionsVisibleCount);
-      if (scrollDown) setPositionsScrollOffset((p) => Math.min(p + 1, maxOffset));
-      else if (scrollUp) setPositionsScrollOffset((p) => Math.max(p - 1, 0));
-      else if (goTop) setPositionsScrollOffset(0);
-      else if (goBottom) setPositionsScrollOffset(maxOffset);
+      const maxIndex = Math.max(0, positions.length - 1);
+      if (scrollDown) {
+        setPositionsSelectedIndex((p) => {
+          const next = Math.min(p + 1, maxIndex);
+          // Auto-scroll to keep selection visible
+          if (next >= positionsScrollOffset + positionsVisibleCount) {
+            setPositionsScrollOffset(next - positionsVisibleCount + 1);
+          }
+          return next;
+        });
+      } else if (scrollUp) {
+        setPositionsSelectedIndex((p) => {
+          const next = Math.max(p - 1, 0);
+          if (next < positionsScrollOffset) {
+            setPositionsScrollOffset(next);
+          }
+          return next;
+        });
+      } else if (goTop) {
+        setPositionsSelectedIndex(0);
+        setPositionsScrollOffset(0);
+      } else if (goBottom) {
+        setPositionsSelectedIndex(maxIndex);
+        setPositionsScrollOffset(Math.max(0, positions.length - positionsVisibleCount));
+      } else if (key.return || input === 'e') {
+        setPositionsExpandedIndex((prev) =>
+          prev === positionsSelectedIndex ? null : positionsSelectedIndex
+        );
+      }
     } else {
       const maxOffset = Math.max(0, events.length - eventLogVisibleCount);
       if (scrollDown) { setEventLogScrollOffset((p) => Math.min(p + 1, maxOffset)); userScrolledRef.current = true; }
@@ -534,9 +642,12 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             market: { ...prev.market!, id: msg.marketId, status: msg.status, outcome: msg.outcome ?? prev.market!.outcome },
           };
         });
-        // Compute results on resolution
+        // Compute results on resolution using current local positions
         if (msg.status === 'RESOLVED' && msg.outcome) {
-          computeResults(msg.marketId, msg.outcome);
+          setPositions((currentPositions) => {
+            computeResults(msg.marketId, msg.outcome!, currentPositions);
+            return currentPositions;
+          });
           refreshMMBalance();
         }
         break;
@@ -555,7 +666,13 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         });
         setPositions((prev) => [...prev, msg.position]);
         if (walletManager.getByAddress(msg.position.address)) {
-          setWallets(walletManager.getAll());
+          // Refresh bettor's balance after bet placement
+          clearnodePool.getBalance(msg.position.address as `0x${string}`)
+            .then((balance) => {
+              const sw = walletManager.getByAddress(msg.position.address);
+              if (sw) { walletManager.updateBalance(sw.index, balance); setWallets(walletManager.getAll()); }
+            })
+            .catch(() => { /* non-fatal */ });
         }
         break;
       case 'CONNECTION_COUNT':
@@ -567,7 +684,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
         setPositions((prev) =>
           prev.map((p) =>
             p.appSessionId === msg.appSessionId
-              ? { ...p, appSessionVersion: msg.version }
+              ? { ...p, appSessionVersion: msg.version, ...(msg.sessionData ? { sessionData: msg.sessionData } : {}) }
               : p
           )
         );
@@ -590,43 +707,47 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
           };
         });
         refreshMMBalance();
+        // Refresh settled wallet's balance
+        if (msg.address && walletManager.getByAddress(msg.address)) {
+          clearnodePool.getBalance(msg.address as `0x${string}`)
+            .then((balance) => {
+              const sw = walletManager.getByAddress(msg.address);
+              if (sw) { walletManager.updateBalance(sw.index, balance); setWallets(walletManager.getAll()); }
+            })
+            .catch(() => { /* non-fatal */ });
+        }
         break;
     }
-  }, [walletManager, outcomes, refreshMMBalance]);
+  }, [walletManager, clearnodePool, outcomes, refreshMMBalance]);
 
-  // Compute results helper
-  const computeResults = useCallback(async (marketId: string, outcome: string) => {
-    try {
-      const { positions } = await hubClient.getPositions(marketId);
-      const simWallets = walletManager.getAll();
-      const winners: SimResults['winners'] = [];
-      const losers: SimResults['losers'] = [];
+  // Compute results from local positions state (avoids race with hub clearing positions)
+  const computeResults = useCallback((marketId: string, outcome: string, localPositions: Position[]) => {
+    const simWallets = walletManager.getAll();
+    const winners: SimResults['winners'] = [];
+    const losers: SimResults['losers'] = [];
 
-      for (const pos of positions) {
-        const sw = simWallets.find((w) => w.address.toLowerCase() === pos.address.toLowerCase());
-        if (!sw) continue;
+    for (const pos of localPositions) {
+      const sw = simWallets.find((w) => w.address.toLowerCase() === pos.address.toLowerCase());
+      if (!sw) continue;
 
-        if (pos.outcome === outcome) {
-          const payout = pos.shares;
-          const profit = payout - pos.costPaid;
-          winners.push({ walletIndex: sw.index, address: pos.address, payout, profit });
-        } else {
-          losers.push({ walletIndex: sw.index, address: pos.address, loss: pos.costPaid });
-        }
+      if (pos.outcome === outcome) {
+        const payout = pos.shares;
+        const profit = payout - pos.costPaid;
+        winners.push({ walletIndex: sw.index, address: pos.address, payout, profit });
+      } else {
+        losers.push({ walletIndex: sw.index, address: pos.address, loss: pos.costPaid });
       }
-
-      setResults({
-        marketId,
-        outcome: outcome as any,
-        winners,
-        losers,
-        totalPayout: winners.reduce((sum, w) => sum + w.payout, 0),
-        totalLoss: losers.reduce((sum, l) => sum + l.loss, 0),
-      });
-    } catch {
-      // If we can't fetch positions, skip results
     }
-  }, [hubClient, walletManager]);
+
+    setResults({
+      marketId,
+      outcome: outcome as any,
+      winners,
+      losers,
+      totalPayout: winners.reduce((sum, w) => sum + w.payout, 0),
+      totalLoss: losers.reduce((sum, l) => sum + l.loss, 0),
+    });
+  }, [walletManager]);
 
   // Handle incoming WebSocket messages
   useEffect(() => {
@@ -670,56 +791,79 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
       {/* Main content */}
       {uiMode === 'help' ? (
         <HelpOverlay height={rows - 4} />
+      ) : uiMode === 'markets' ? (
+        <MarketsOverlay
+          markets={marketsList}
+          selectedIndex={marketsSelectedIndex}
+          height={rows - 4}
+        />
       ) : (
         <Box flexDirection="column" flexGrow={1}>
-          {/* Top row: left panel (55%) + market/system (45%) side-by-side */}
-          <Box height={topHeight}>
-            <Box flexDirection="column" width="55%">
-              {activePanel === 'positions' ? (
+          {/* Main row: left column (55%) + right column (45%) */}
+          <Box flexGrow={1}>
+            {/* Left column: Positions (top) + EventLog (bottom) */}
+            <Box flexDirection="column" width="50%">
+              <Box height={positionsHeight}>
                 <PositionsPanel
                   positions={positions}
                   scrollOffset={positionsScrollOffset}
                   visibleCount={positionsVisibleCount}
                   isActive={activePanel === 'positions'}
                   panelWidth={leftPanelWidth}
+                  selectedIndex={positionsSelectedIndex}
+                  expandedIndex={positionsExpandedIndex ?? undefined}
                 />
-              ) : (
-                <WalletTable
-                  wallets={wallets}
-                  scrollOffset={walletsScrollOffset}
-                  visibleCount={walletsVisibleCount}
-                  isActive={activePanel === 'wallets'}
+              </Box>
+              <Box flexGrow={1}>
+                <EventLog
+                  events={events}
+                  scrollOffset={eventLogScrollOffset}
+                  visibleCount={eventLogVisibleCount}
+                  isActive={activePanel === 'eventLog'}
                 />
-              )}
+              </Box>
             </Box>
-            <Box flexDirection="column" width="45%">
+            {/* Right column: SystemInfo (fixed) + WalletTable (fills) */}
+            <Box flexDirection="column" width="50%">
               <SystemInfo
                 wsConnected={connected}
                 wsError={wsError}
                 state={adminState}
               />
-              <MarketPanel
-                state={adminState}
-                prices={prices}
-                outcomes={outcomes}
-                quantities={quantities}
-                barWidth={barWidth}
-                betCount={totalBets}
-                mmBalance={mmBalance}
+              <WalletTable
+                wallets={wallets}
+                scrollOffset={walletsScrollOffset}
+                visibleCount={walletsVisibleCount}
+                isActive={activePanel === 'wallets'}
               />
-              <ResultsPanel results={results} />
+              {/* <Box flexGrow={1}> */}
+                <MarketPanel
+                  state={adminState}
+                  prices={prices}
+                  outcomes={outcomes}
+                  quantities={quantities}
+                  barWidth={barWidth}
+                  betCount={totalBets}
+                  mmBalance={mmBalance}
+                  results={results}
+                />
+              {/* </Box> */}
             </Box>
           </Box>
 
-          {/* Bottom row: full-width event log */}
-          <Box flexGrow={1}>
-            <EventLog
-              events={events}
-              scrollOffset={eventLogScrollOffset}
-              visibleCount={eventLogVisibleCount}
-              isActive={activePanel === 'eventLog'}
+          {/* MarketPanel: full-width compact bar */}
+          {/* <Box flexShrink={0}>
+            <MarketPanel
+              state={adminState}
+              prices={prices}
+              outcomes={outcomes}
+              quantities={quantities}
+              barWidth={barWidth}
+              betCount={totalBets}
+              mmBalance={mmBalance}
+              results={results}
             />
-          </Box>
+          </Box> */}
         </Box>
       )}
 

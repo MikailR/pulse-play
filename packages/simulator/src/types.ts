@@ -71,6 +71,7 @@ export interface WsSessionVersionUpdated {
   type: 'SESSION_VERSION_UPDATED';
   appSessionId: string;
   version: number;
+  sessionData?: string;
 }
 
 export type WsMessage =
@@ -120,7 +121,19 @@ export interface Position {
   appSessionId: string;
   appSessionVersion: number;
   sessionStatus?: SessionStatus;
+  sessionData?: string;
   timestamp: number;
+}
+
+// ── Market summary (for :markets overlay) ──
+
+export interface MarketSummary {
+  id: string;
+  gameId: string;
+  categoryId: string;
+  status: MarketStatus;
+  outcome: string | null;
+  createdAt: number;
 }
 
 // ── Hub API types ──
