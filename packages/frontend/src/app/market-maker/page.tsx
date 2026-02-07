@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { MMFaucetCard, MMBalanceCard } from '@/components/market-maker';
+import { MMFaucetCard, MMBalanceCard, MMFeeCard } from '@/components/market-maker';
 
 export default function MarketMakerPage() {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -23,8 +23,9 @@ export default function MarketMakerPage() {
         <div className="lg:col-span-2">
           <MMFaucetCard onFunded={handleFunded} />
         </div>
-        <div>
+        <div className="space-y-6">
           <MMBalanceCard refreshKey={refreshKey} />
+          <MMFeeCard />
         </div>
       </div>
     </div>

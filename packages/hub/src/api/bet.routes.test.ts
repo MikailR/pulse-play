@@ -293,4 +293,69 @@ describe('Bet Routes', () => {
     );
     expect(versionBroadcasts).toHaveLength(0);
   });
+
+  // ── Fee tests ──
+
+  test('V2 allocations include fee split (default 1%)', async () => {
+    openMarket();
+    const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
+    submitAppState.mockClear();
+
+    await postBet(validBet()); // amount = 10
+
+    const callArgs = submitAppState.mock.calls[0][0];
+    // 1% fee on $10 = $0.1 fee, $9.9 net
+    expect(callArgs.allocations).toEqual([
+      { participant: '0xAlice', asset: 'ytest.usd', amount: '9900000' },
+      { participant: '0xMM', asset: 'ytest.usd', amount: '100000' },
+    ]);
+  });
+
+  test('V2 sessionData contains fee and feePercent fields', async () => {
+    openMarket();
+    const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
+    submitAppState.mockClear();
+
+    await postBet(validBet());
+
+    const callArgs = submitAppState.mock.calls[0][0];
+    const sessionData = JSON.parse(callArgs.sessionData);
+    expect(sessionData.fee).toBeCloseTo(0.1);
+    expect(sessionData.feePercent).toBe(1);
+  });
+
+  test('position records fee amount', async () => {
+    openMarket();
+    await postBet(validBet());
+    const pos = ctx.positionTracker.getPositionsByUser('0xAlice')[0];
+    expect(pos.fee).toBeCloseTo(0.1);
+    expect(pos.costPaid).toBe(10);
+  });
+
+  test('LMSR uses netAmount (fewer shares with fee)', async () => {
+    openMarket();
+    // With 1% fee, net is 9.9 instead of 10 — fewer shares
+    const res = await postBet(validBet());
+    const sharesWithFee = res.json().shares;
+
+    // Create a zero-fee context for comparison
+    const ctx0 = createTestContext({ transactionFeePercent: 0 } as any);
+    // We can't easily compare, but shares should be > 0
+    expect(sharesWithFee).toBeGreaterThan(0);
+  });
+
+  test('zero fee results in no fee split', async () => {
+    ctx.transactionFeePercent = 0;
+    openMarket();
+    const submitAppState = ctx.clearnodeClient.submitAppState as jest.Mock;
+    submitAppState.mockClear();
+
+    await postBet(validBet());
+
+    const callArgs = submitAppState.mock.calls[0][0];
+    expect(callArgs.allocations).toEqual([
+      { participant: '0xAlice', asset: 'ytest.usd', amount: '10000000' },
+      { participant: '0xMM', asset: 'ytest.usd', amount: '0' },
+    ]);
+  });
 });

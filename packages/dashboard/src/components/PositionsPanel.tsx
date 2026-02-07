@@ -35,7 +35,7 @@ export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive
       {/* Title */}
       <Box justifyContent="center" gap={1} marginBottom={1}>
         <Text bold color="yellow">
-           APP SESSIONS ({positions.length})
+          APP SESSIONS ({positions.length})
         </Text>
         {showIndicator && (
           <Text color="gray" dimColor>
@@ -75,7 +75,8 @@ export function PositionsPanel({ positions, scrollOffset, visibleCount, isActive
               {formatOutcomeShort(pos.outcome).padEnd(6)}
             </Text>
             <Text color="green">
-              {formatDollars(pos.costPaid).padStart(6).padEnd(8)}
+              {formatDollars(pos.appSessionVersion === 1 ? pos.costPaid :
+                pos.appSessionVersion === 2 ? pos.costPaid - pos.fee : 0).padStart(6).padEnd(8)}
             </Text>
             <Text color="white" dimColor>
               {formatVersion(pos.appSessionVersion).padStart(4).padEnd(9)}

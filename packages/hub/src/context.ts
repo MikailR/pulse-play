@@ -21,6 +21,7 @@ export interface AppContext {
   oracle: OracleService;
   ws: WsManager;
   log: Logger;
+  transactionFeePercent: number;
 }
 
 /**
@@ -76,6 +77,7 @@ export function createTestContext(
     oracle: new OracleService(),
     ws: new WsManager(),
     log: defaultLogger,
+    transactionFeePercent: 1,
     ...overrides,
   };
 }

@@ -177,6 +177,11 @@ export const logger = {
     write(`${INDENT}${DIM}└${RESET} ${YELLOW}System reset to clean state${RESET}`);
   },
 
+  configUpdated(key: string, value: unknown): void {
+    if (silent) return;
+    write(`${INDENT}${DIM}└${RESET} ${YELLOW}Config: ${key} = ${value}${RESET}`);
+  },
+
   // ── Clearnode ────────────────────────────────────────────────────────
 
   clearnodeAutoConnect(): void {

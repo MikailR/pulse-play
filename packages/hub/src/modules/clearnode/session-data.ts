@@ -21,6 +21,8 @@ export interface SessionDataV2 {
   effectivePricePerShare: number;
   preBetOdds: { ball: number; strike: number };
   postBetOdds: { ball: number; strike: number };
+  fee?: number;
+  feePercent?: number;
   timestamp: number;
 }
 

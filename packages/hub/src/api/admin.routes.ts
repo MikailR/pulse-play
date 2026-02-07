@@ -82,6 +82,23 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: AppContext): void
     return { success: true };
   });
 
+  // ── Fee config ──
+
+  app.get('/api/admin/config', async () => {
+    return { transactionFeePercent: ctx.transactionFeePercent };
+  });
+
+  app.post<{ Body: { transactionFeePercent?: number } }>('/api/admin/config', async (req, reply) => {
+    const { transactionFeePercent } = req.body ?? {} as any;
+    if (typeof transactionFeePercent !== 'number' || transactionFeePercent < 0 || transactionFeePercent > 100) {
+      return reply.status(400).send({ error: 'transactionFeePercent must be a number between 0 and 100' });
+    }
+    ctx.transactionFeePercent = transactionFeePercent;
+    ctx.ws.broadcast({ type: 'CONFIG_UPDATED', transactionFeePercent });
+    ctx.log.configUpdated('transactionFeePercent', transactionFeePercent);
+    return { success: true, transactionFeePercent };
+  });
+
   // Get positions for a specific market
   app.get<{ Params: PositionsParams }>(
     '/api/admin/positions/:marketId',

@@ -175,11 +175,73 @@ describe('Admin Routes', () => {
         outcome: 'BALL',
         shares: 5.5,
         costPaid: 2.75,
+        fee: 0,
         appSessionId: 'sess1',
         appSessionVersion: 1,
         sessionStatus: 'open',
         timestamp: 1234567890,
       });
+    });
+  });
+
+  // ── Config endpoints ──
+
+  describe('config endpoints', () => {
+    test('GET /api/admin/config returns transactionFeePercent', async () => {
+      const res = await app.inject({ method: 'GET', url: '/api/admin/config' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ transactionFeePercent: 1 });
+    });
+
+    test('POST /api/admin/config updates transactionFeePercent', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/config',
+        payload: { transactionFeePercent: 2.5 },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ success: true, transactionFeePercent: 2.5 });
+      expect(ctx.transactionFeePercent).toBe(2.5);
+    });
+
+    test('POST /api/admin/config broadcasts CONFIG_UPDATED', async () => {
+      const spy = jest.spyOn(ctx.ws, 'broadcast');
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/config',
+        payload: { transactionFeePercent: 0.5 },
+      });
+      expect(spy).toHaveBeenCalledWith({
+        type: 'CONFIG_UPDATED',
+        transactionFeePercent: 0.5,
+      });
+    });
+
+    test('POST /api/admin/config returns 400 for invalid value', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/config',
+        payload: { transactionFeePercent: -1 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    test('POST /api/admin/config returns 400 for value > 100', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/config',
+        payload: { transactionFeePercent: 101 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    test('POST /api/admin/config returns 400 for non-number', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/config',
+        payload: { transactionFeePercent: 'abc' },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 });

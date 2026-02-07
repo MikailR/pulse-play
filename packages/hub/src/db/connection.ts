@@ -92,6 +92,7 @@ function pushSchema(db: DrizzleDB): void {
     outcome TEXT NOT NULL,
     shares REAL NOT NULL,
     cost_paid REAL NOT NULL,
+    fee REAL NOT NULL DEFAULT 0,
     app_session_id TEXT NOT NULL,
     app_session_version INTEGER NOT NULL,
     session_status TEXT NOT NULL DEFAULT 'open',

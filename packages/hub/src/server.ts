@@ -44,6 +44,7 @@ async function main() {
     oracle: new OracleService(),
     ws: new WsManager(),
     log: logger,
+    transactionFeePercent: parseInt(process.env.TRANSACTION_FEE_PERCENT ?? '1', 10),
   };
 
   const app = await buildApp(ctx);

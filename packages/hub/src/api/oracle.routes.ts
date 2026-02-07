@@ -230,6 +230,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     for (const winner of result.winners) {
       const pos = positionMap.get(winner.appSessionId);
       const costPaid = pos ? pos.costPaid : 0;
+      const fee = pos?.fee ?? 0;
+      const netAmount = costPaid - fee;
       const sessionId = winner.appSessionId as `0x${string}`;
       const winnerAddr = winner.address as `0x${string}`;
       const mm = mmAddress as `0x${string}`;
@@ -246,13 +248,13 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       };
       const v3SessionData = encodeSessionData(v3Data);
 
-      // Close session: return user's original funds
+      // Close session: return user's net funds (fee stays with MM)
       try {
         await ctx.clearnodeClient.closeSession({
           appSessionId: sessionId,
           allocations: [
-            { participant: winnerAddr, asset: ASSET, amount: toMicroUnits(costPaid) },
-            { participant: mm, asset: ASSET, amount: '0' },
+            { participant: winnerAddr, asset: ASSET, amount: toMicroUnits(netAmount) },
+            { participant: mm, asset: ASSET, amount: toMicroUnits(fee) },
           ],
           sessionData: v3SessionData,
         });

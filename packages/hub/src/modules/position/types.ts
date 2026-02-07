@@ -8,6 +8,7 @@ export interface Position {
   outcome: Outcome;
   shares: number;
   costPaid: number;
+  fee?: number;
   appSessionId: string;
   appSessionVersion: number;
   sessionStatus: SessionStatus;

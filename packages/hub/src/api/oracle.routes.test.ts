@@ -462,13 +462,14 @@ describe('Oracle Routes', () => {
       });
 
       // Winner: Alice bet BALL, outcome is BALL
-      // closeSession returns user's costPaid
+      // closeSession returns user's net funds (fee stays with MM)
+      // With 1% fee on $10: fee = $0.1, net = $9.9
       expect(closeSession).toHaveBeenCalledWith(
         expect.objectContaining({
           appSessionId: 'sess-0xAlice',
           allocations: expect.arrayContaining([
-            expect.objectContaining({ participant: '0xAlice', amount: '10000000' }),
-            expect.objectContaining({ participant: '0xMM', amount: '0' }),
+            expect.objectContaining({ participant: '0xAlice', amount: '9900000' }),
+            expect.objectContaining({ participant: '0xMM', amount: '100000' }),
           ]),
         }),
       );
@@ -776,6 +777,38 @@ describe('Oracle Routes', () => {
       expect(submitAppState).not.toHaveBeenCalled();
       expect(closeSession).not.toHaveBeenCalled();
       expect(transfer).not.toHaveBeenCalled();
+    });
+
+    test('winner close session allocates fee to MM (not all to user)', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xAlice', marketId, 'BALL', 10);
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      const closeSession = ctx.clearnodeClient.closeSession as jest.Mock;
+      closeSession.mockClear();
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      // Winner's session close: net to user, fee to MM
+      const winnerClose = closeSession.mock.calls.find((call: unknown[]) => {
+        const args = call[0] as { allocations: { participant: string; amount: string }[] };
+        return args.allocations.some((a) => a.participant === '0xAlice' && a.amount !== '0');
+      });
+      expect(winnerClose).toBeDefined();
+      const allocs = winnerClose![0].allocations;
+      const aliceAlloc = allocs.find((a: any) => a.participant === '0xAlice');
+      const mmAlloc = allocs.find((a: any) => a.participant === '0xMM');
+      // 1% fee on $10: user gets $9.9 = 9900000, MM gets $0.1 = 100000
+      expect(aliceAlloc.amount).toBe('9900000');
+      expect(mmAlloc.amount).toBe('100000');
     });
   });
 });

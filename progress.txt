@@ -1796,3 +1796,126 @@ The `SESSION_VERSION_UPDATED` broadcast was only implemented for the V1→V2 tra
 
 ### Test Results
 - **Hub:** 20 suites, 263 passed (+2 new V3 broadcast tests)
+
+---
+
+## 2026-02-07: Dashboard Multi-Sport / N-Outcome Upgrade
+
+### Changes
+- **types.ts**: `WsOddsUpdate` now uses `prices[]`, `quantities[]`, `outcomes[]` (required); old `priceBall`/`priceStrike`/`qBall`/`qStrike` kept as optional backward compat. `AdminStateResponse.market` now has `quantities[]`, `outcomes[]`, `gameId?`, `categoryId?`. Top-level `prices[]` and `outcomes[]` on `AdminStateResponse`.
+- **formatters.ts**: `calculatePrices()` extracted as pure function (LMSR softmax with log-sum-exp trick). `formatWsMessage()` ODDS_UPDATE uses N-outcome formatting. `getOutcomeColor()` accepts optional index for color cycling. `formatVersion()` bug fixed (was returning `"1"` instead of `"v1"`).
+- **App.tsx**: State changed from `{priceBall, priceStrike}` to `prices: number[]`, `outcomes: string[]`, `quantities: number[]`. All message handlers updated for N-outcome. Added `:games` and `:sports` commands.
+- **MarketPanel.tsx**: Dynamic N-outcome rendering with color cycling. Shows `gameId`/`categoryId` in header.
+- **SystemInfo.tsx**: Shows Game ID and Category ID when available.
+- **CommandBar.tsx**: Shows game/category context in status bar.
+
+### Test Results
+- **Dashboard:** 56 tests passed (was 48 — added 8 new: N-outcome ODDS_UPDATE formatting, 3-outcome ODDS_UPDATE, getOutcomeColor index cycling, 6 calculatePrices tests)
+- **TypeScript:** Zero compilation errors
+
+## 2026-02-07 — Multi-Sport N-Outcome Migration (Steps 1-13 COMPLETE)
+
+### Dashboard (packages/dashboard/)
+- **types.ts**: WsOddsUpdate, AdminStateResponse use `prices[]`, `quantities[]`, `outcomes[]` arrays
+- **App.tsx**: State migrated from priceBall/priceStrike to arrays; added `:games` and `:sports` commands
+- **MarketPanel.tsx**: Dynamic N-outcome rendering with color cycling
+- **formatters.ts**: `getOutcomeColor(outcome, index?)` with OUTCOME_COLORS cycle; `formatWsMessage` uses arrays
+- **HelpOverlay.tsx**: Added `:games` and `:sports` commands
+- **56 tests passing, build clean**
+
+### Simulator (packages/simulator/)
+- **types.ts**: Same array field migration; SimConfig: `outcomeBias` + `outcomes[]` replace `ballBias`
+- **App.tsx**: `:open [sportId] [categoryId]` fetches categories for outcomes; `:resolve` validates against outcomes[]
+- **MarketPanel.tsx**: Dynamic N-outcome rendering
+- **wallet-manager.ts**: `generateProfiles` uses `config.outcomes` and `outcomeBias`
+- **hub-client.ts**: Added `getSports()` and `getSportCategories()` methods
+- **formatters.ts**: Same generalization as dashboard
+- **HelpOverlay.tsx**: Updated command descriptions
+- **112 tests passing, TypeScript clean**
+
+### Remaining from plan
+- Step 14 (READMEs) — not yet done
+
+---
+
+## 2026-02-07: Transaction Fee Tests Added
+
+### Context
+Transaction fee feature was implemented, now adding comprehensive test coverage across bet, admin, and oracle routes.
+
+### Changes Made
+
+#### 1. bet.routes.test.ts (+5 tests)
+Added fee-specific tests at end of describe block:
+- `V2 allocations include fee split (default 1%)` — Verifies 1% fee on $10 bet splits into $9.9 net + $0.1 fee in allocations
+- `V2 sessionData contains fee and feePercent fields` — Confirms sessionData includes fee=0.1 and feePercent=1
+- `position records fee amount` — Checks position tracker stores fee=0.1 and costPaid=10
+- `LMSR uses netAmount (fewer shares with fee)` — Verifies LMSR getShares() uses net amount after fee deduction
+- `zero fee results in no fee split` — Confirms setting transactionFeePercent=0 results in full amount to user
+
+#### 2. admin.routes.test.ts (+6 tests)
+Added new `config endpoints` describe block with tests for GET/POST /api/admin/config:
+- `GET /api/admin/config returns transactionFeePercent` — Returns default 1%
+- `POST /api/admin/config updates transactionFeePercent` — Successfully updates to 2.5%
+- `POST /api/admin/config broadcasts CONFIG_UPDATED` — WebSocket broadcast verification
+- `POST /api/admin/config returns 400 for invalid value` — Negative value validation
+- `POST /api/admin/config returns 400 for value > 100` — Upper bound validation
+- `POST /api/admin/config returns 400 for non-number` — Type validation
+
+#### 3. oracle.routes.test.ts (+1 test)
+Added to outcome/resolution describe block:
+- `winner close session allocates fee to MM (not all to user)` — Verifies winner's closeSession splits $10 bet into $9.9 to user (9900000) and $0.1 to MM (100000), ensuring fee stays with MM
+
+### Test Results
+- **All 380 tests passing** (was 368 — added 12 new fee-specific tests)
+- Hub test suite: 26 passed suites, 0 failures
+- Test execution time: ~21 seconds
+
+### Fee Implementation Verification
+Tests confirm:
+1. Fee calculation: `feeAmount = amount * (feePercent / 100)`
+2. Net amount: `netAmount = amount - feeAmount`
+3. LMSR uses netAmount (fewer shares purchased)
+4. V2 allocations: `[netAmount, feeAmount]`
+5. V2 sessionData includes `fee` and `feePercent` fields
+6. Position records both `fee` and `costPaid` (original amount)
+7. Winner closeSession splits: `[netAmount to user, fee to MM]`
+8. Admin config endpoints work correctly with validation
+9. Zero fee bypasses fee split entirely
+
+### Notes
+- Fee stays with MM on winner resolution (doesn't go back to user)
+- Losers: full amount goes to MM (including fee that was already split at V2)
+- Winners: closeSession returns netAmount to user, fee remains with MM
+- Config validation: 0 ≤ transactionFeePercent ≤ 100
+- Tests use default 1% fee from createTestContext()
+
+
+---
+
+## Market Maker Fee Implementation
+Date: 2026-02-07
+
+### What was done:
+1. **AppContext** — Added `transactionFeePercent: number` (default 1%) to `AppContext` interface, `createTestContext`, and `server.ts`
+2. **Bet route fee logic** — `feeAmount = amount * (feePercent / 100)`, `netAmount = amount - feeAmount`. LMSR uses `netAmount` for share calculation. V2 allocations split as `[netAmount, feeAmount]` instead of `[amount, 0]`
+3. **SessionDataV2** — Added optional `fee` and `feePercent` fields
+4. **Position fee tracking** — Added `fee` column to positions table (schema + raw SQL), optional `fee` field on Position type, stored in DB via tracker
+5. **Winner resolution fix** — closeSession for winners uses `[netAmount, fee]` allocations (fee stays with MM). Loser logic unchanged (total session amount still moves to MM)
+6. **Admin config endpoints** — `GET/POST /api/admin/config` for reading/updating `transactionFeePercent`, broadcasts `CONFIG_UPDATED` WS message
+7. **WsMessage type** — Added `CONFIG_UPDATED` message type
+8. **Logger** — Added `configUpdated()` method
+9. **Frontend MMFeeCard** — New component with preset buttons (0%, 0.5%, 1%, 2%), custom input, save button. Added to market-maker page layout
+10. **Frontend API** — `getAdminConfig()` and `updateAdminConfig()` functions
+
+### Tests:
+- Hub: 380 tests passing (12 new fee-specific tests)
+- Frontend: 319 tests passing (7 new MMFeeCard tests)
+- New test coverage: V2 fee allocations, sessionData fee fields, position fee recording, zero-fee mode, admin config CRUD + validation + WS broadcast, winner close allocations with fee, MMFeeCard render/preset/save/error
+
+### Key math:
+- Fee: `feeAmount = amount * (feePercent / 100)`
+- Net: `netAmount = amount - feeAmount`  
+- Shares from LMSR use `netAmount` (fee reduces shares)
+- `costPaid` = full `amount` (what user put up)
+- Winner total return: `netAmount` (session close) + `profit` (transfer) = `payout - fee`

@@ -110,7 +110,8 @@ export type WsMessageType =
   | 'CONNECTION_COUNT'
   | 'STATE_SYNC'
   | 'SESSION_SETTLED'
-  | 'SESSION_VERSION_UPDATED';
+  | 'SESSION_VERSION_UPDATED'
+  | 'CONFIG_UPDATED';
 
 export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
@@ -195,6 +196,11 @@ export interface WsSessionVersionUpdated {
   version: number;
 }
 
+export interface WsConfigUpdated {
+  type: 'CONFIG_UPDATED';
+  transactionFeePercent: number;
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -204,4 +210,5 @@ export type WsMessage =
   | WsConnectionCount
   | WsStateSync
   | WsSessionSettled
-  | WsSessionVersionUpdated;
+  | WsSessionVersionUpdated
+  | WsConfigUpdated;

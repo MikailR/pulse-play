@@ -63,6 +63,7 @@ export const positions = sqliteTable('positions', {
   outcome: text('outcome').notNull(),
   shares: real('shares').notNull(),
   costPaid: real('cost_paid').notNull(),
+  fee: real('fee').notNull().default(0),
   appSessionId: text('app_session_id').notNull(),
   appSessionVersion: integer('app_session_version').notNull(),
   sessionStatus: text('session_status').notNull().default('open'),

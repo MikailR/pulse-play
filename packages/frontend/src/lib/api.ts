@@ -226,6 +226,26 @@ export async function requestMMFaucet(count = 1): Promise<MMFaucetResponse> {
   return handleResponse<MMFaucetResponse>(response);
 }
 
+// ── Admin Config Endpoints ──
+
+export interface AdminConfigResponse {
+  transactionFeePercent: number;
+}
+
+export async function getAdminConfig(): Promise<AdminConfigResponse> {
+  const response = await fetch(`${HUB_REST_URL}/api/admin/config`);
+  return handleResponse<AdminConfigResponse>(response);
+}
+
+export async function updateAdminConfig(transactionFeePercent: number): Promise<{ success: boolean; transactionFeePercent: number }> {
+  const response = await fetch(`${HUB_REST_URL}/api/admin/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transactionFeePercent }),
+  });
+  return handleResponse(response);
+}
+
 // ── User Faucet Endpoints ──
 
 export async function requestUserFaucet(address: string, count = 1): Promise<UserFaucetResponse> {

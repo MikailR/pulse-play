@@ -63,11 +63,16 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
       return reply.status(400).send({ accepted: false, reason: 'Invalid outcome' });
     }
 
+    // Compute fee
+    const feePercent = ctx.transactionFeePercent;
+    const feeAmount = amount * (feePercent / 100);
+    const netAmount = amount - feeAmount;
+
     // Capture pre-bet odds (N-outcome)
     const preBetPrices = getPrices(market.quantities, market.b);
 
-    // Calculate shares from LMSR
-    const shares = getShares(market.quantities, market.b, outcomeIndex, amount);
+    // Calculate shares from LMSR using netAmount (fee reduces shares received)
+    const shares = getShares(market.quantities, market.b, outcomeIndex, netAmount);
     const newQuantities = getNewQuantities(market.quantities, outcomeIndex, shares);
 
     // Update market quantities
@@ -81,6 +86,7 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
       outcome,
       shares,
       costPaid: amount,
+      fee: feeAmount,
       appSessionId,
       appSessionVersion,
       sessionStatus: 'open' as const,
@@ -125,9 +131,11 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
         outcome,
         amount,
         shares,
-        effectivePricePerShare: amount / shares,
+        effectivePricePerShare: netAmount / shares,
         preBetOdds: { ball: preBetPrices[0] ?? 0.5, strike: preBetPrices[1] ?? 0.5 },
         postBetOdds: { ball: prices[0] ?? 0.5, strike: prices[1] ?? 0.5 },
+        fee: feeAmount,
+        feePercent,
         timestamp,
       };
       await ctx.clearnodeClient.submitAppState({
@@ -135,8 +143,8 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
         intent: 'operate',
         version: appSessionVersion + 1,
         allocations: [
-          { participant: address as `0x${string}`, asset: ASSET, amount: toMicroUnits(amount) },
-          { participant: mmAddress as `0x${string}`, asset: ASSET, amount: '0' },
+          { participant: address as `0x${string}`, asset: ASSET, amount: toMicroUnits(netAmount) },
+          { participant: mmAddress as `0x${string}`, asset: ASSET, amount: toMicroUnits(feeAmount) },
         ],
         sessionData: encodeSessionData(v2Data),
       });
