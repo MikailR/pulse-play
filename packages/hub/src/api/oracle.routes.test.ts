@@ -889,4 +889,59 @@ describe('Oracle Routes', () => {
       expect(mmAlloc.amount).toBe('100000');
     });
   });
+
+  // ── POOL_UPDATE broadcasts ──
+
+  describe('POOL_UPDATE broadcasts', () => {
+    test('broadcasts POOL_UPDATE after market open', async () => {
+      const spy = jest.spyOn(ctx.ws, 'broadcast');
+      await activateAndOpenMarket();
+
+      const poolUpdates = spy.mock.calls.filter(
+        (call) => (call[0] as any).type === 'POOL_UPDATE',
+      );
+      expect(poolUpdates.length).toBeGreaterThanOrEqual(1);
+    });
+
+    test('broadcasts POOL_UPDATE after market close', async () => {
+      await activateAndOpenMarket();
+      const spy = jest.spyOn(ctx.ws, 'broadcast');
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      const poolUpdates = spy.mock.calls.filter(
+        (call) => (call[0] as any).type === 'POOL_UPDATE',
+      );
+      expect(poolUpdates.length).toBeGreaterThanOrEqual(1);
+    });
+
+    test('broadcasts POOL_UPDATE after each SESSION_SETTLED during resolution', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xAlice', marketId, 'BALL', 10);
+      await placeBet('0xBob', marketId, 'STRIKE', 10);
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      const spy = jest.spyOn(ctx.ws, 'broadcast');
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      const poolUpdates = spy.mock.calls.filter(
+        (call) => (call[0] as any).type === 'POOL_UPDATE',
+      );
+      // At least one per settlement (loser + winner) + final after resolution = 3+
+      expect(poolUpdates.length).toBeGreaterThanOrEqual(3);
+    });
+  });
 });

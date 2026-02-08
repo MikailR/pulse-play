@@ -2542,3 +2542,40 @@ Branch: feature/liquidity-pool (worktree at ../pulse-play-liquidity-pool)
 - packages/simulator/src/{types,App}.tsx
 - packages/simulator/src/utils/formatters.ts + test
 - packages/simulator/src/components/SystemInfo.tsx
+
+--- 2026-02-07: LP Wiring + Simulator Pool Staleness Bug Fixes ---
+
+### 6 Bugs Fixed
+
+**Bug 1+2: Page rename, reorder, wallet wiring (market-maker/page.tsx)**
+- Replaced hardcoded `walletAddress: string | null = null` with `useWallet()` hook
+- Page title: "Market Maker" → "Liquidity Pool", subtitle updated
+- LP Pool section moved above Market Maker section; border-t moved accordingly
+
+**Bug 3: Responsive navigation (Header.tsx)**
+- Extracted NAV_ITEMS array for reuse
+- Desktop nav hidden on small screens: `hidden md:flex`
+- Added hamburger button (md:hidden) toggling mobile dropdown menu
+- Mobile dropdown: absolute positioned, closes on link click
+- Nav label: "Market Maker" → "Liquidity Pool"
+- 3 new tests: hamburger renders, shows/hides mobile nav
+
+**Bug 4: Stale canWithdraw after market open/close**
+- Created shared `hub/src/api/pool-update.ts` with `hasOpenMarkets()`, `hasUnsettledPositions()`, `broadcastPoolUpdate()`
+- Refactored `lp.routes.ts` to import shared helpers, removed local definitions, replaced inline POOL_UPDATE blocks
+- Added `broadcastPoolUpdate(ctx)` after market open and market close in `oracle.routes.ts`
+
+**Bug 5: Pool value not updating during settlement**
+- Added `broadcastPoolUpdate(ctx)` after each loser and winner SESSION_SETTLED broadcast
+- Replaced inline POOL_UPDATE block at end of resolution with single `broadcastPoolUpdate(ctx)` call
+- 3 new tests in oracle.routes.test.ts: POOL_UPDATE after open, after close, after each settlement
+
+### Files Changed
+- **Created:** `hub/src/api/pool-update.ts`
+- **Modified:** `hub/src/api/lp.routes.ts`, `hub/src/api/oracle.routes.ts`, `hub/src/api/oracle.routes.test.ts`
+- **Modified:** `frontend/src/app/market-maker/page.tsx`, `frontend/src/components/Header.tsx`, `frontend/src/components/Header.test.tsx`
+
+### Test Results
+- Hub: 31 suites, 513 passed (6 skipped, 1 suite skipped — pre-existing)
+- Frontend: 45 suites, 374 passed
+- Hub build: ✅ clean (tsc --noEmit)

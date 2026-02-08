@@ -4,9 +4,10 @@ import type { GameStateRequest, OutcomeRequest } from './types.js';
 import type { Outcome } from '../modules/lmsr/types.js';
 import { getPrices } from '../modules/lmsr/engine.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { marketCategories } from '../db/schema.js';
 import { encodeSessionData, type SessionDataV3 } from '../modules/clearnode/session-data.js';
+import { broadcastPoolUpdate } from './pool-update.js';
 
 export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): void {
 
@@ -93,6 +94,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     ctx.log.marketOpened(market.id);
     ctx.log.broadcast('MARKET_STATUS', ctx.ws.getConnectionCount());
 
+    await broadcastPoolUpdate(ctx);
+
     return { success: true, marketId: market.id };
   });
 
@@ -120,6 +123,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     ctx.log.marketClosed(current.id);
     ctx.log.broadcast('MARKET_STATUS', ctx.ws.getConnectionCount());
+
+    await broadcastPoolUpdate(ctx);
 
     return { success: true, marketId: current.id };
   });
@@ -244,6 +249,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
         loss: loser.loss,
       });
       ctx.log.sendTo(loser.address, 'BET_RESULT:LOSS');
+
+      await broadcastPoolUpdate(ctx);
     }
 
     // ── Settle winners ──
@@ -317,6 +324,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
         payout: winner.payout,
       });
       ctx.log.sendTo(winner.address, 'BET_RESULT:WIN');
+
+      await broadcastPoolUpdate(ctx);
     }
 
     // Clear positions for this market (archives to settlements)
@@ -334,29 +343,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     ctx.log.broadcast('MARKET_STATUS', ctx.ws.getConnectionCount());
 
-    // Broadcast pool update after resolution (non-critical)
-    try {
-      const balance = await ctx.clearnodeClient.getBalance();
-      const poolValue = parseFloat(balance) / 1_000_000;
-      const allMarkets = ctx.marketManager.getAllMarkets();
-      const openMarkets = allMarkets.some((m) => m.status === 'OPEN');
-      const unsettledResult = ctx.db.all<{ c: number }>(
-        sql`SELECT COUNT(*) as c FROM positions WHERE session_status = 'open'`
-      );
-      const unsettled = (unsettledResult[0]?.c ?? 0) > 0;
-      const stats = ctx.lpManager.getPoolStats(poolValue, openMarkets, unsettled);
-      ctx.ws.broadcast({
-        type: 'POOL_UPDATE',
-        poolValue: stats.poolValue,
-        totalShares: stats.totalShares,
-        sharePrice: stats.sharePrice,
-        lpCount: stats.lpCount,
-        canWithdraw: stats.canWithdraw,
-      });
-      ctx.log.lpPoolUpdate(stats.poolValue, stats.totalShares, stats.sharePrice);
-    } catch (err) {
-      ctx.log.error('pool-update-after-resolution', err);
-    }
+    // Broadcast pool update after resolution (authoritative final state)
+    await broadcastPoolUpdate(ctx);
 
     return {
       success: true,

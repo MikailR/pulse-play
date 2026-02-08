@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useWallet } from '@/providers/WagmiProvider';
 import {
   MMFaucetCard,
   MMBalanceCard,
@@ -15,8 +16,8 @@ import {
 export default function MarketMakerPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // TODO: Get actual wallet address from ClearnodeProvider
-  const walletAddress: string | null = null;
+  const { address } = useWallet();
+  const walletAddress = address ?? null;
 
   const handleFunded = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -29,24 +30,14 @@ export default function MarketMakerPage() {
   return (
     <div className="space-y-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold font-mono uppercase tracking-wide text-text-primary">Market Maker</h1>
+        <h1 className="text-2xl font-bold font-mono uppercase tracking-wide text-text-primary">Liquidity Pool</h1>
         <p className="text-text-secondary mt-2">
-          View market maker status and manage funds
+          Provide liquidity and manage your LP position
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <MMFaucetCard onFunded={handleFunded} />
-        </div>
-        <div className="space-y-6">
-          <MMBalanceCard refreshKey={refreshKey} />
-          <MMFeeCard />
-        </div>
-      </div>
-
       {/* LP Pool Section */}
-      <div className="border-t border-border pt-6">
+      <div>
         <h2 className="text-lg font-bold font-mono uppercase tracking-wide text-text-primary mb-4">
           Liquidity Pool
         </h2>
@@ -63,6 +54,23 @@ export default function MarketMakerPage() {
 
         <div className="mt-6">
           <LPEventHistory address={walletAddress} refreshKey={refreshKey} />
+        </div>
+      </div>
+
+      {/* Market Maker Section */}
+      <div className="border-t border-border pt-6">
+        <h2 className="text-lg font-bold font-mono uppercase tracking-wide text-text-primary mb-4">
+          Market Maker
+        </h2>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <MMFaucetCard onFunded={handleFunded} />
+          </div>
+          <div className="space-y-6">
+            <MMBalanceCard refreshKey={refreshKey} />
+            <MMFeeCard />
+          </div>
         </div>
       </div>
     </div>

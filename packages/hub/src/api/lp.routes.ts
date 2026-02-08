@@ -1,19 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
-import { sql } from 'drizzle-orm';
-
-function hasOpenMarkets(ctx: AppContext): boolean {
-  const allMarkets = ctx.marketManager.getAllMarkets();
-  return allMarkets.some((m) => m.status === 'OPEN');
-}
-
-function hasUnsettledPositions(ctx: AppContext): boolean {
-  const result = ctx.db.all<{ c: number }>(
-    sql`SELECT COUNT(*) as c FROM positions WHERE session_status = 'open'`
-  );
-  return (result[0]?.c ?? 0) > 0;
-}
+import { hasOpenMarkets, hasUnsettledPositions, broadcastPoolUpdate } from './pool-update.js';
 
 export function registerLPRoutes(app: FastifyInstance, ctx: AppContext): void {
 
@@ -98,21 +86,7 @@ export function registerLPRoutes(app: FastifyInstance, ctx: AppContext): void {
       });
 
       // Broadcast POOL_UPDATE
-      const stats = ctx.lpManager.getPoolStats(
-        result.poolValueAfter,
-        hasOpenMarkets(ctx),
-        hasUnsettledPositions(ctx),
-      );
-      ctx.ws.broadcast({
-        type: 'POOL_UPDATE',
-        poolValue: stats.poolValue,
-        totalShares: stats.totalShares,
-        sharePrice: stats.sharePrice,
-        lpCount: stats.lpCount,
-        canWithdraw: stats.canWithdraw,
-      });
-
-      ctx.log.lpPoolUpdate(stats.poolValue, stats.totalShares, stats.sharePrice);
+      await broadcastPoolUpdate(ctx);
 
       return {
         success: true,
@@ -172,21 +146,7 @@ export function registerLPRoutes(app: FastifyInstance, ctx: AppContext): void {
       });
 
       // Broadcast POOL_UPDATE
-      const stats = ctx.lpManager.getPoolStats(
-        result.poolValueAfter,
-        hasOpenMarkets(ctx),
-        hasUnsettledPositions(ctx),
-      );
-      ctx.ws.broadcast({
-        type: 'POOL_UPDATE',
-        poolValue: stats.poolValue,
-        totalShares: stats.totalShares,
-        sharePrice: stats.sharePrice,
-        lpCount: stats.lpCount,
-        canWithdraw: stats.canWithdraw,
-      });
-
-      ctx.log.lpPoolUpdate(stats.poolValue, stats.totalShares, stats.sharePrice);
+      await broadcastPoolUpdate(ctx);
 
       return {
         success: true,
