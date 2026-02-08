@@ -151,6 +151,24 @@ describe('GameList', () => {
     });
   });
 
+  it('refetches on GAME_CREATED WebSocket message', async () => {
+    mockGetGames.mockResolvedValue({ games: [baseGame] });
+
+    render(<GameList />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('game-list')).toBeInTheDocument();
+    });
+
+    const handler = subscribeFn.mock.calls[0][0] as (msg: WsMessage) => void;
+
+    handler({ type: 'GAME_CREATED', game: { id: 'game-2', sportId: 'baseball', status: 'SCHEDULED' } } as WsMessage);
+
+    await waitFor(() => {
+      expect(mockGetGames).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('re-fetches when sportId changes', async () => {
     mockGetGames.mockResolvedValue({ games: [] });
 

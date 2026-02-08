@@ -74,6 +74,11 @@ export interface WsSessionVersionUpdated {
   sessionData?: string;
 }
 
+export interface WsGameCreated {
+  type: 'GAME_CREATED';
+  game: { id: string; sportId: string; status: string };
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -83,7 +88,8 @@ export type WsMessage =
   | WsConnectionCount
   | WsStateSync
   | WsSessionSettled
-  | WsSessionVersionUpdated;
+  | WsSessionVersionUpdated
+  | WsGameCreated;
 
 // ── Admin state response ──
 

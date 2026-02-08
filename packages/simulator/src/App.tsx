@@ -358,7 +358,9 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             setSimStatus('idle');
             showStatus('Simulation stopped');
           } else if (sub === 'config') {
-            if (parts.length > 2) {
+            if (parts[2] === 'keys') {
+              showStatus('Keys: outcomeBias, betAmountMin, betAmountMax, delayMinMs, delayMaxMs, maxBetsPerWallet');
+            } else if (parts.length > 2) {
               const updates: Partial<SimConfig> = {};
               for (let i = 2; i < parts.length; i++) {
                 const [key, val] = parts[i].split('=');
@@ -366,8 +368,13 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
                   (updates as any)[key] = parseFloat(val);
                 }
               }
-              simEngine.setConfig(updates);
-              showStatus('Config updated');
+              const count = Object.keys(updates).length;
+              if (count > 0) {
+                simEngine.setConfig(updates);
+                showStatus('Config updated');
+              } else {
+                showStatus('No valid key=val pairs. Use :sim config keys');
+              }
             } else {
               const config = simEngine.getConfig();
               showStatus(`bias=${config.outcomeBias} amt=${config.betAmountMin}-${config.betAmountMax} delay=${config.delayMinMs}-${config.delayMaxMs} max=${config.maxBetsPerWallet} outcomes=${config.outcomes.join('/')}`);

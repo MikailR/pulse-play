@@ -266,6 +266,73 @@ describe('Game Routes', () => {
     });
   });
 
+  describe('GAME_CREATED broadcast', () => {
+    test('broadcasts GAME_CREATED on POST /api/games', async () => {
+      const spy = jest.spyOn(ctx.ws, 'broadcast');
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/games',
+        payload: {
+          sportId: 'basketball',
+          homeTeamId: 'lal',
+          awayTeamId: 'gsw',
+        },
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'GAME_CREATED',
+          game: expect.objectContaining({
+            sportId: 'basketball',
+            status: 'SCHEDULED',
+          }),
+        }),
+      );
+    });
+
+    test('broadcasts GAME_CREATED on activate', async () => {
+      const game = ctx.gameManager.createGame('baseball', 'lad', 'hou', 'broadcast-activate');
+      const spy = jest.spyOn(ctx.ws, 'broadcast');
+
+      await app.inject({
+        method: 'POST',
+        url: `/api/games/${game.id}/activate`,
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'GAME_CREATED',
+          game: expect.objectContaining({
+            id: game.id,
+            status: 'ACTIVE',
+          }),
+        }),
+      );
+    });
+
+    test('broadcasts GAME_CREATED on complete', async () => {
+      const game = ctx.gameManager.createGame('baseball', 'lad', 'atl', 'broadcast-complete');
+      ctx.gameManager.activateGame(game.id);
+      const spy = jest.spyOn(ctx.ws, 'broadcast');
+
+      await app.inject({
+        method: 'POST',
+        url: `/api/games/${game.id}/complete`,
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'GAME_CREATED',
+          game: expect.objectContaining({
+            id: game.id,
+            status: 'COMPLETED',
+          }),
+        }),
+      );
+    });
+  });
+
   describe('POST /api/games/:gameId/activate', () => {
     test('activates a SCHEDULED game', async () => {
       const game = ctx.gameManager.createGame('baseball', 'lad', 'hou', 'scheduled-game');

@@ -779,6 +779,49 @@ describe('Oracle Routes', () => {
       expect(transfer).not.toHaveBeenCalled();
     });
 
+    // ── User tracking on resolution ──
+
+    test('records win in userTracker for winners', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xAlice', marketId, 'BALL', 10);
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      const user = ctx.userTracker.getUser('0xAlice');
+      expect(user).toBeDefined();
+      expect(user!.totalWins).toBe(1);
+      expect(user!.totalPayout).toBeGreaterThan(0);
+    });
+
+    test('records loss in userTracker for losers', async () => {
+      const marketId = await activateAndOpenMarket();
+      await placeBet('0xBob', marketId, 'STRIKE', 10);
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/market/close',
+        payload: { gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/oracle/outcome',
+        payload: { outcome: 'BALL', gameId: DEFAULT_TEST_GAME_ID, categoryId: DEFAULT_TEST_CATEGORY_ID },
+      });
+
+      const user = ctx.userTracker.getUser('0xBob');
+      expect(user).toBeDefined();
+      expect(user!.totalLosses).toBe(1);
+    });
+
     test('winner close session allocates fee to MM (not all to user)', async () => {
       const marketId = await activateAndOpenMarket();
       await placeBet('0xAlice', marketId, 'BALL', 10);

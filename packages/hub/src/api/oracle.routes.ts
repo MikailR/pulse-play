@@ -219,6 +219,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
         address: loser.address,
       });
 
+      ctx.userTracker.recordLoss(loser.address, pos ? pos.costPaid : loser.loss);
+
       ctx.ws.sendTo(loser.address, {
         type: 'BET_RESULT',
         result: 'LOSS',
@@ -289,6 +291,8 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
         status: 'settled' as const,
         address: winner.address,
       });
+
+      ctx.userTracker.recordWin(winner.address, winner.payout, costPaid);
 
       ctx.ws.sendTo(winner.address, {
         type: 'BET_RESULT',

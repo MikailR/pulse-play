@@ -68,7 +68,7 @@ export function SystemInfo({
       )}
       {state?.market?.categoryId && (
         <Box gap={1}>
-          <Text>Category:</Text>
+          <Text>Market Category:</Text>
           <Text color="white">{state.market.categoryId}</Text>
         </Box>
       )}

@@ -39,7 +39,7 @@ export function GameList({ className = '', sportId }: GameListProps) {
   // Re-fetch on game/market state changes via WebSocket
   useEffect(() => {
     const handleMessage = (message: WsMessage) => {
-      if (message.type === 'GAME_STATE' || message.type === 'MARKET_STATUS') {
+      if (message.type === 'GAME_STATE' || message.type === 'MARKET_STATUS' || message.type === 'GAME_CREATED') {
         fetchGames();
       }
     };

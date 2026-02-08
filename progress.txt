@@ -2364,3 +2364,51 @@ Reworked simulator commands to separate game creation from market opening, added
 - **Simulator:** 5 suites, 139 passed (was 133, +6 new hub-client tests)
 - **TypeScript:** Zero compilation errors (simulator + frontend source files)
 - **Total:** 900 passing tests
+
+## Five Bug Fixes: User Tracking, Game Broadcasts, Error Messages, Sim Config
+Date: 2026-02-07
+
+### Bugs Fixed
+
+1. **Bug 4 & 5 — User tracking never wired in (UserStatsCard empty, Leaderboard empty)**
+   - **Root cause:** `userTracker.recordBet()`, `recordWin()`, `recordLoss()` were implemented and tested but never called from route handlers
+   - **Fix:** Added `ctx.userTracker.recordBet(address, amount)` in `bet.routes.ts` after successful bet; added `ctx.userTracker.recordWin()` and `recordLoss()` in `oracle.routes.ts` resolution loops
+   - **Tests added:** 2 in bet.routes.test.ts, 2 in oracle.routes.test.ts
+
+2. **Bug 1 — Games page doesn't react to new games**
+   - **Root cause:** Hub never broadcast WebSocket events when games were created/activated/completed
+   - **Fix:** Added `GAME_CREATED` WS type to hub types, broadcast in `game.routes.ts` after create/activate/complete. Updated frontend `GameList.tsx` to listen for `GAME_CREATED`. Added type parity to simulator and frontend types.
+   - **Tests added:** 3 in game.routes.test.ts, 1 in GameList.test.tsx
+
+3. **Bug 2 — Simulator error messages show raw JSON**
+   - **Root cause:** `hub-client.ts` threw raw response text including JSON wrappers like `{"error":"message"}`
+   - **Fix:** Added `extractErrorMessage()` method that parses JSON and extracts `error` or `reason` fields, falling back to raw text
+   - **Tests added:** 3 in hub-client.test.ts (JSON error, JSON reason, non-JSON fallback)
+
+4. **Bug 3 — `:sim config keys` says "Config updated"**
+   - **Root cause:** `parts[2] === 'keys'` fell into the generic key=val parsing branch
+   - **Fix:** Added explicit `keys` check before key=val parsing; also added empty-update detection showing "No valid key=val pairs"
+
+### Modified Files
+| File | Changes |
+|---|---|
+| hub/src/api/bet.routes.ts | +userTracker.recordBet() on accepted bet |
+| hub/src/api/oracle.routes.ts | +userTracker.recordWin/recordLoss in resolution |
+| hub/src/api/types.ts | +GAME_CREATED WS type |
+| hub/src/api/game.routes.ts | +GAME_CREATED broadcast on create/activate/complete |
+| hub/src/api/bet.routes.test.ts | +2 user tracking tests |
+| hub/src/api/oracle.routes.test.ts | +2 user tracking tests |
+| hub/src/api/game.routes.test.ts | +3 GAME_CREATED broadcast tests |
+| simulator/src/core/hub-client.ts | extractErrorMessage() for clean errors |
+| simulator/src/core/hub-client.test.ts | +3 error extraction tests |
+| simulator/src/types.ts | +WsGameCreated type |
+| simulator/src/App.tsx | Fixed :sim config keys + empty update detection |
+| frontend/src/lib/types.ts | +WsGameCreated type |
+| frontend/src/components/games/GameList.tsx | +GAME_CREATED listener |
+| frontend/src/components/games/GameList.test.tsx | +1 GAME_CREATED refetch test |
+
+### Test Results
+- **Hub:** 26 suites passed, 435 tests (2 pre-existing timeout failures in faucet.test.ts and team.routes.test.ts)
+- **Simulator:** 5 suites, 142 tests — all pass
+- **Frontend:** 40 suites, 331 tests — all pass
+- **Total:** 908 passing tests (+8 from new tests)

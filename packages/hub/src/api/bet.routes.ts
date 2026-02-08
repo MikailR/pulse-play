@@ -93,6 +93,7 @@ export function registerBetRoutes(app: FastifyInstance, ctx: AppContext): void {
       timestamp,
     };
     ctx.positionTracker.addPosition(position);
+    ctx.userTracker.recordBet(address, amount);
 
     // Broadcast position added
     const positionCount = ctx.positionTracker.getPositionsByMarket(marketId).length;

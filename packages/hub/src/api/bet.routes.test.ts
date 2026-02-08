@@ -344,6 +344,26 @@ describe('Bet Routes', () => {
     expect(sharesWithFee).toBeGreaterThan(0);
   });
 
+  // ── User tracking ──
+
+  test('records user bet in userTracker on successful bet', async () => {
+    openMarket();
+    await postBet(validBet());
+
+    const user = ctx.userTracker.getUser('0xAlice');
+    expect(user).toBeDefined();
+    expect(user!.totalBets).toBe(1);
+    expect(user!.totalWagered).toBe(10);
+  });
+
+  test('does not record user bet when market is not OPEN', async () => {
+    createPendingMarket();
+    await postBet(validBet());
+
+    const user = ctx.userTracker.getUser('0xAlice');
+    expect(user).toBeNull();
+  });
+
   test('zero fee results in no fee split', async () => {
     ctx.transactionFeePercent = 0;
     openMarket();

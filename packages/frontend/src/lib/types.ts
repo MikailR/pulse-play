@@ -256,6 +256,11 @@ export interface WsSessionVersionUpdated {
   version: number;
 }
 
+export interface WsGameCreated {
+  type: 'GAME_CREATED';
+  game: { id: string; sportId: string; status: string };
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -265,7 +270,8 @@ export type WsMessage =
   | WsConnectionCount
   | WsStateSync
   | WsSessionSettled
-  | WsSessionVersionUpdated;
+  | WsSessionVersionUpdated
+  | WsGameCreated;
 
 // ── Market Maker DTOs ──
 

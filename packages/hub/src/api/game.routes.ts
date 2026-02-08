@@ -36,6 +36,10 @@ export function registerGameRoutes(app: FastifyInstance, ctx: AppContext): void 
 
       try {
         const game = ctx.gameManager.createGame(sportId, homeTeamId, awayTeamId, id);
+        ctx.ws.broadcast({
+          type: 'GAME_CREATED',
+          game: { id: game.id, sportId: game.sportId, status: game.status },
+        });
         return { success: true, game: enrichGame(game) };
       } catch (err: any) {
         return reply.status(400).send({ error: err.message });
@@ -56,6 +60,10 @@ export function registerGameRoutes(app: FastifyInstance, ctx: AppContext): void 
   app.post<{ Params: { gameId: string } }>('/api/games/:gameId/activate', async (req, reply) => {
     try {
       const game = ctx.gameManager.activateGame(req.params.gameId);
+      ctx.ws.broadcast({
+        type: 'GAME_CREATED',
+        game: { id: game.id, sportId: game.sportId, status: game.status },
+      });
       return { success: true, game: enrichGame(game) };
     } catch (err: any) {
       return reply.status(400).send({ error: err.message });
@@ -65,6 +73,10 @@ export function registerGameRoutes(app: FastifyInstance, ctx: AppContext): void 
   app.post<{ Params: { gameId: string } }>('/api/games/:gameId/complete', async (req, reply) => {
     try {
       const game = ctx.gameManager.completeGame(req.params.gameId);
+      ctx.ws.broadcast({
+        type: 'GAME_CREATED',
+        game: { id: game.id, sportId: game.sportId, status: game.status },
+      });
       return { success: true, game: enrichGame(game) };
     } catch (err: any) {
       return reply.status(400).send({ error: err.message });

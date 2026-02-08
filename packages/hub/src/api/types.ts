@@ -111,7 +111,8 @@ export type WsMessageType =
   | 'STATE_SYNC'
   | 'SESSION_SETTLED'
   | 'SESSION_VERSION_UPDATED'
-  | 'CONFIG_UPDATED';
+  | 'CONFIG_UPDATED'
+  | 'GAME_CREATED';
 
 export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
@@ -202,6 +203,11 @@ export interface WsConfigUpdated {
   transactionFeePercent: number;
 }
 
+export interface WsGameCreated {
+  type: 'GAME_CREATED';
+  game: { id: string; sportId: string; status: string };
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -212,4 +218,5 @@ export type WsMessage =
   | WsStateSync
   | WsSessionSettled
   | WsSessionVersionUpdated
-  | WsConfigUpdated;
+  | WsConfigUpdated
+  | WsGameCreated;

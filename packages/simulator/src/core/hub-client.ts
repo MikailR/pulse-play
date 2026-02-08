@@ -136,7 +136,7 @@ export class HubClient {
     const response = await fetch(`${this.restUrl}${path}`);
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Hub ${path} failed (${response.status}): ${text}`);
+      throw new Error(this.extractErrorMessage(path, response.status, text));
     }
     return response.json() as Promise<T>;
   }
@@ -149,8 +149,17 @@ export class HubClient {
     });
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Hub ${path} failed (${response.status}): ${text}`);
+      throw new Error(this.extractErrorMessage(path, response.status, text));
     }
     return response.json() as Promise<T>;
+  }
+
+  private extractErrorMessage(path: string, status: number, text: string): string {
+    try {
+      const json = JSON.parse(text);
+      if (json.error) return json.error;
+      if (json.reason) return json.reason;
+    } catch { /* not JSON */ }
+    return `Hub ${path} failed (${status}): ${text}`;
   }
 }

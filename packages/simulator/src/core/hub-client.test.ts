@@ -282,5 +282,42 @@ describe('HubClient', () => {
       await client2.resetBackend();
       expect(mockFetch).toHaveBeenCalledWith('http://localhost:3001/api/admin/reset', expect.any(Object));
     });
+
+    it('extracts error field from JSON error response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: () => Promise.resolve('{"error":"Market not found"}'),
+      });
+
+      await expect(client.getState()).rejects.toThrow('Market not found');
+    });
+
+    it('extracts reason field from JSON error response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: () => Promise.resolve('{"reason":"Invalid outcome"}'),
+      });
+
+      await expect(client.placeBet({
+        address: '0xABC',
+        marketId: 'market-1',
+        outcome: 'BALL',
+        amount: 2.0,
+        appSessionId: '0xSESSION',
+        appSessionVersion: 1,
+      })).rejects.toThrow('Invalid outcome');
+    });
+
+    it('falls back to raw text for non-JSON errors', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Internal Server Error'),
+      });
+
+      await expect(client.getState()).rejects.toThrow('Hub /api/admin/state failed (500): Internal Server Error');
+    });
   });
 });
