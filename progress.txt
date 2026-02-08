@@ -3021,3 +3021,21 @@ Fixed `LPManager.recordDeposit()` poolValue semantics bug:
 - **Simulator:** 165 passed, 5 suites
 - **Total: 1,213 tests** (exceeds both pre-merge baselines: CLOB=1,075+, LP=1,026+)
 - **TypeScript:** Hub + Simulator clean (`tsc --noEmit`)
+
+---
+
+## README.md Overhaul
+Date: 2026-02-08
+
+Replaced the 3-paragraph placeholder README with a comprehensive developer-onboarding document covering:
+- Project summary with key innovations
+- Tech stack table
+- Prerequisites (Node 20+, pnpm, C++ toolchain for native deps)
+- Step-by-step getting started (clone, env config, hub, logos, frontend, simulator)
+- Environment variables reference tables for hub and frontend
+- Available commands per package (root, hub, frontend, simulator)
+- Simulator section with key commands and navigation shortcuts
+- Project structure tree
+- Testing instructions with maxWorkers tip
+
+All env var names, defaults, script names, and package details verified against source.
