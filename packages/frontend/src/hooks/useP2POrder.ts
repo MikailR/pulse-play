@@ -28,7 +28,7 @@ interface UseP2POrderReturn {
 
 export function useP2POrder(options: UseP2POrderOptions = {}): UseP2POrderReturn {
   const { address, marketId, gameId, onSuccess, onError } = options;
-  const { createAppSession, status: clearnodeStatus, refreshBalance } = useClearnode();
+  const { createAppSession, status: clearnodeStatus, refreshBalance, reconnect } = useClearnode();
 
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<P2POrderStep>('idle');
@@ -57,13 +57,24 @@ export function useP2POrder(options: UseP2POrderOptions = {}): UseP2POrderReturn
       try {
         // Step 1: Create app session on Clearnode
         setStep('creating-session');
-        const session = await createAppSession({
+        const sessionParams = {
           counterparty: MM_ADDRESS,
           allocations: [
             { asset: ASSET, amount: toMicroUnits(amount), participant: address as `0x${string}` },
             { asset: ASSET, amount: '0', participant: MM_ADDRESS },
           ],
-        });
+        };
+        let session;
+        try {
+          session = await createAppSession(sessionParams);
+        } catch (err) {
+          if ((err as Error).message?.includes('participant signature')) {
+            await reconnect();
+            session = await createAppSession(sessionParams);
+          } else {
+            throw err;
+          }
+        }
 
         // Step 2: Submit order to hub
         setStep('submitting-order');
@@ -93,7 +104,7 @@ export function useP2POrder(options: UseP2POrderOptions = {}): UseP2POrderReturn
         setStep('idle');
       }
     },
-    [address, marketId, gameId, clearnodeStatus, createAppSession, refreshBalance, onSuccess, onError]
+    [address, marketId, gameId, clearnodeStatus, createAppSession, reconnect, refreshBalance, onSuccess, onError]
   );
 
   const cancelOrderFn = useCallback(

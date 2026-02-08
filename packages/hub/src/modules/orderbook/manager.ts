@@ -1,4 +1,4 @@
-import { eq, and, inArray, desc, asc } from 'drizzle-orm';
+import { eq, ne, and, inArray, desc, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import type { DrizzleDB } from '../../db/connection.js';
 import { p2pOrders, p2pFills, marketCategories } from '../../db/schema.js';
@@ -103,11 +103,13 @@ export class OrderBookManager {
     const oppositeOutcome = getOppositeOutcome(outcome, outcomes);
 
     // Get resting orders on the opposite side, sorted by MCPS desc then createdAt asc
+    // Exclude orders from the same user to prevent self-filling
     const restingRows = this.db.select().from(p2pOrders)
       .where(and(
         eq(p2pOrders.marketId, marketId),
         eq(p2pOrders.outcome, oppositeOutcome),
         inArray(p2pOrders.status, ['OPEN', 'PARTIALLY_FILLED']),
+        ne(p2pOrders.userAddress, userAddress),
       ))
       .orderBy(desc(p2pOrders.mcps), asc(p2pOrders.createdAt))
       .all();

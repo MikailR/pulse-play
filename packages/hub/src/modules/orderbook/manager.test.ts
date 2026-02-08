@@ -304,6 +304,48 @@ describe('OrderBookManager', () => {
       expect(bobFills[0].counterpartyOrderId).toBe(aliceResult.orderId);
     });
 
+    it('does not match against same user\'s resting orders (self-fill prevention)', () => {
+      // Alice places BALL order
+      manager.placeOrder(makeRequest({
+        userAddress: '0xAlice',
+        outcome: 'BALL',
+        mcps: 0.60,
+        amount: 6,
+      }), OUTCOMES);
+
+      // Alice places STRIKE order — should NOT fill against her own BALL order
+      const result = manager.placeOrder(makeRequest({
+        userAddress: '0xAlice',
+        outcome: 'STRIKE',
+        mcps: 0.40,
+        amount: 4,
+      }), OUTCOMES);
+
+      expect(result.fills).toHaveLength(0);
+      expect(result.order.status).toBe('OPEN');
+    });
+
+    it('matches against different user\'s resting orders (cross-user fill works)', () => {
+      // Alice places BALL order
+      manager.placeOrder(makeRequest({
+        userAddress: '0xAlice',
+        outcome: 'BALL',
+        mcps: 0.60,
+        amount: 6,
+      }), OUTCOMES);
+
+      // Bob places STRIKE order — SHOULD fill against Alice
+      const result = manager.placeOrder(makeRequest({
+        userAddress: '0xBob',
+        outcome: 'STRIKE',
+        mcps: 0.40,
+        amount: 4,
+      }), OUTCOMES);
+
+      expect(result.fills).toHaveLength(1);
+      expect(result.order.status).toBe('FILLED');
+    });
+
     it('does not match orders on the same outcome', () => {
       manager.placeOrder(makeRequest({
         userAddress: '0xAlice',

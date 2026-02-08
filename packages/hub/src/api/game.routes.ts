@@ -23,7 +23,12 @@ export function registerGameRoutes(app: FastifyInstance, ctx: AppContext): void 
       games = ctx.gameManager.getAllGames();
     }
 
-    return { games: games.map(enrichGame) };
+    return {
+      games: games.map(g => ({
+        ...enrichGame(g),
+        marketCount: ctx.marketManager.getMarketsByGame(g.id).length,
+      })),
+    };
   });
 
   app.post<{ Body: { sportId?: string; homeTeamId?: string; awayTeamId?: string; id?: string } }>(

@@ -2570,3 +2570,64 @@ Implemented a full P2P order book alongside the existing LMSR market maker for b
 
 ### Branch
 All work on branch `feature/clob` in worktree at `../pulse-play-clob/`
+
+## Post-CLOB Bug Fixes & Enhancements (6 fixes)
+Date: 2026-02-08
+Branch: feature/clob (worktree: ../pulse-play-clob/)
+
+### Fix 1: P2P Command Parsing Bug (Simulator)
+- **Problem:** `:p2p create 0 ball 100 0.30` showed "Usage" because `!wIdx` is `true` when `wIdx === 0`
+- **Fix:** Changed `!wIdx` to `isNaN(wIdx) || wIdx < 0` in App.tsx:554
+
+### Fix 2: Self-Fill Prevention (Hub)
+- **Problem:** Users could match against their own resting orders on the opposite side
+- **Fix:** Added `ne(p2pOrders.userAddress, userAddress)` to the resting orders WHERE clause in OrderBookManager.placeOrder()
+- **Tests:** +2 tests — self-fill prevented, cross-user fill preserved
+
+### Fix 3: GameCards "No Markets" Display (Frontend + Hub)
+- **Problem:** GameCards always showed "No markets" because marketCount was never passed
+- **Fix:** Hub GET /api/games now enriches each game with `marketCount` via `ctx.marketManager.getMarketsByGame(g.id).length`
+- Frontend Game type now has optional `marketCount`; GameList passes `game.marketCount ?? 0` to GameCard
+- **Tests:** +2 hub tests (marketCount present, marketCount 0) + 2 frontend tests (marketCount rendered)
+
+### Fix 4: RPC "Missing participant signature" Race Condition (Frontend)
+- **Problem:** Random "Missing participant signature" errors when clicking Place Bet
+- **Fix 4a:** Added `expiresAtRef.current > Date.now()` check to `ensureConnected()` in ClearnodeProvider — forces re-auth when session expired
+- **Fix 4b:** Added try/catch retry in useBet.ts and useP2POrder.ts — catches "participant signature" error, calls `reconnect()`, retries once
+- **Tests:** +2 tests per hook (retry on signature error, no retry on other errors) = 4 new tests
+
+### Fix 5: Help Panel + README P2P Documentation (Simulator)
+- Added "P2P Order Book" section to HelpOverlay with all 5 P2P commands
+- Updated `:sim config keys` description to include `mode, mcpsMin/Max`
+- Added `:sim p2p`, `:sim mixed`, `:sim lmsr` convenience commands to help
+- README: Added P2P Order Book commands table, P2P config params (mode, mcpsMin, mcpsMax), P2P Demo Walkthrough section
+
+### Fix 6: Sim Convenience Aliases (Simulator)
+- Added `:sim p2p`, `:sim mixed`, `:sim lmsr` subcommands to App.tsx
+- Each sets the mode, validates open market, then starts simulation
+- Updated usage message to include new subcommands
+
+### Files Modified (14)
+| File | Fix # |
+|---|---|
+| packages/simulator/src/App.tsx | 1, 6 |
+| packages/hub/src/modules/orderbook/manager.ts | 2 |
+| packages/hub/src/modules/orderbook/manager.test.ts | 2 |
+| packages/hub/src/api/game.routes.ts | 3 |
+| packages/hub/src/api/game.routes.test.ts | 3 |
+| packages/frontend/src/lib/types.ts | 3 |
+| packages/frontend/src/components/games/GameList.tsx | 3 |
+| packages/frontend/src/components/games/GameList.test.tsx | 3 |
+| packages/frontend/src/providers/ClearnodeProvider.tsx | 4 |
+| packages/frontend/src/hooks/useBet.ts | 4 |
+| packages/frontend/src/hooks/useP2POrder.ts | 4 |
+| packages/frontend/src/hooks/useBet.test.ts | 4 |
+| packages/frontend/src/hooks/useP2POrder.test.ts | 4 |
+| packages/simulator/src/components/HelpOverlay.tsx | 5 |
+| packages/simulator/README.md | 5 |
+
+### Test Results
+- **Hub:** 530 pass, 4 pre-existing timeout failures (faucet, team routes, oracle routes)
+- **Frontend:** 46 suites, 389 tests — all pass (+8 new tests)
+- **Simulator:** 5 suites, 162 tests — all pass
+- **TypeScript:** Hub + Simulator compile cleanly (tsc --noEmit)

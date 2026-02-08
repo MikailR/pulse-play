@@ -416,8 +416,62 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
               const config = simEngine.getConfig();
               showStatus(`bias=${config.outcomeBias} amt=${config.betAmountMin}-${config.betAmountMax} delay=${config.delayMinMs}-${config.delayMaxMs} max=${config.maxBetsPerWallet} outcomes=${config.outcomes.join('/')}`);
             }
+          } else if (sub === 'p2p') {
+            simEngine.setConfig({ mode: 'p2p' });
+            if (!adminState?.market || adminState.market.status !== 'OPEN') {
+              showStatus('Mode set to P2P, but no open market. Run :open first');
+              return;
+            }
+            let mmAddress: string;
+            try {
+              const mmInfo = await hubClient.getMMInfo();
+              mmAddress = mmInfo.address;
+              setMmBalance(mmInfo.balance);
+            } catch {
+              showStatus('Cannot reach MM. Is hub running?');
+              return;
+            }
+            simEngine.start(adminState.market.id, mmAddress);
+            setSimStatus('running');
+            showStatus('P2P simulation started');
+          } else if (sub === 'mixed') {
+            simEngine.setConfig({ mode: 'mixed' });
+            if (!adminState?.market || adminState.market.status !== 'OPEN') {
+              showStatus('Mode set to mixed, but no open market. Run :open first');
+              return;
+            }
+            let mmAddress: string;
+            try {
+              const mmInfo = await hubClient.getMMInfo();
+              mmAddress = mmInfo.address;
+              setMmBalance(mmInfo.balance);
+            } catch {
+              showStatus('Cannot reach MM. Is hub running?');
+              return;
+            }
+            simEngine.start(adminState.market.id, mmAddress);
+            setSimStatus('running');
+            showStatus('Mixed (LMSR+P2P) simulation started');
+          } else if (sub === 'lmsr') {
+            simEngine.setConfig({ mode: 'lmsr' });
+            if (!adminState?.market || adminState.market.status !== 'OPEN') {
+              showStatus('Mode set to LMSR, but no open market. Run :open first');
+              return;
+            }
+            let mmAddress: string;
+            try {
+              const mmInfo = await hubClient.getMMInfo();
+              mmAddress = mmInfo.address;
+              setMmBalance(mmInfo.balance);
+            } catch {
+              showStatus('Cannot reach MM. Is hub running?');
+              return;
+            }
+            simEngine.start(adminState.market.id, mmAddress);
+            setSimStatus('running');
+            showStatus('LMSR simulation started');
           } else {
-            showStatus('Usage: :sim start|stop|config');
+            showStatus('Usage: :sim start|stop|config|p2p|mixed|lmsr');
           }
           break;
         }
@@ -551,7 +605,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             const amount = parseFloat(parts[4]);
             const mcps = parseFloat(parts[5]);
 
-            if (!wIdx || !outcome || isNaN(amount) || isNaN(mcps)) {
+            if (isNaN(wIdx) || wIdx < 0 || !outcome || isNaN(amount) || isNaN(mcps)) {
               showStatus('Usage: :p2p create <wallet#> <outcome> <amount> <mcps>');
               break;
             }

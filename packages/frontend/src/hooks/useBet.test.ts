@@ -327,6 +327,62 @@ describe('useBet', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('retries on "participant signature" error after reconnect', async () => {
+    const mockReconnect = jest.fn().mockResolvedValue(undefined);
+    setupClearnodeMock({ reconnect: mockReconnect });
+
+    // First call fails with signature error, second succeeds
+    mockCreateAppSession
+      .mockRejectedValueOnce(new Error('RPC error: Missing participant signature'))
+      .mockResolvedValueOnce({
+        appSessionId: '0xSESSION_RETRY',
+        version: 1,
+        status: 'open',
+      });
+
+    mockPlaceBet.mockResolvedValueOnce({
+      accepted: true,
+      shares: 9.5,
+    });
+
+    const onSuccess = jest.fn();
+    const { result } = renderHook(() =>
+      useBet({ address: '0x123', marketId: 'market-1', onSuccess })
+    );
+
+    await act(async () => {
+      await result.current.bet('BALL', 10);
+    });
+
+    expect(mockReconnect).toHaveBeenCalledTimes(1);
+    expect(mockCreateAppSession).toHaveBeenCalledTimes(2);
+    expect(mockPlaceBet).toHaveBeenCalledWith(
+      expect.objectContaining({ appSessionId: '0xSESSION_RETRY' }),
+    );
+    expect(onSuccess).toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
+  });
+
+  it('does not retry on non-signature errors', async () => {
+    const mockReconnect = jest.fn();
+    setupClearnodeMock({ reconnect: mockReconnect });
+
+    mockCreateAppSession.mockRejectedValueOnce(new Error('Network timeout'));
+
+    const onError = jest.fn();
+    const { result } = renderHook(() =>
+      useBet({ address: '0x123', marketId: 'market-1', onError })
+    );
+
+    await act(async () => {
+      await result.current.bet('BALL', 10);
+    });
+
+    expect(mockReconnect).not.toHaveBeenCalled();
+    expect(mockCreateAppSession).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBe('Network timeout');
+  });
+
   it('sets isLoading during request', async () => {
     let resolveSession: (value: unknown) => void;
     mockCreateAppSession.mockImplementationOnce(

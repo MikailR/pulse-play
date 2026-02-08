@@ -27,7 +27,7 @@ interface UseBetReturn {
 
 export function useBet(options: UseBetOptions = {}): UseBetReturn {
   const { address, marketId, onSuccess, onError } = options;
-  const { createAppSession, status: clearnodeStatus, refreshBalance } = useClearnode();
+  const { createAppSession, status: clearnodeStatus, refreshBalance, reconnect } = useClearnode();
 
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<BetStep>('idle');
@@ -63,14 +63,25 @@ export function useBet(options: UseBetOptions = {}): UseBetReturn {
           amount,
           timestamp: Date.now(),
         };
-        const session = await createAppSession({
+        const sessionParams = {
           counterparty: MM_ADDRESS,
           allocations: [
             { asset: ASSET, amount: toMicroUnits(amount), participant: address as `0x${string}` },
             { asset: ASSET, amount: '0', participant: MM_ADDRESS },
           ],
           sessionData: encodeSessionData(v1Data),
-        });
+        };
+        let session;
+        try {
+          session = await createAppSession(sessionParams);
+        } catch (err) {
+          if ((err as Error).message?.includes('participant signature')) {
+            await reconnect();
+            session = await createAppSession(sessionParams);
+          } else {
+            throw err;
+          }
+        }
 
         // Step 2: Notify hub with the real session ID
         setStep('notifying-hub');
@@ -105,7 +116,7 @@ export function useBet(options: UseBetOptions = {}): UseBetReturn {
         setStep('idle');
       }
     },
-    [address, marketId, clearnodeStatus, createAppSession, refreshBalance, onSuccess, onError]
+    [address, marketId, clearnodeStatus, createAppSession, reconnect, refreshBalance, onSuccess, onError]
   );
 
   return {

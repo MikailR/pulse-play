@@ -60,6 +60,19 @@ pnpm test:watch
 | `:sim stop` | Stop automated betting |
 | `:sim config` | Show current simulation config |
 | `:sim config key=val` | Update config (e.g. `outcomeBias=0.7 maxBetsPerWallet=5`) |
+| `:sim p2p` | Start sim in P2P order book mode |
+| `:sim mixed` | Start sim in mixed (LMSR + P2P) mode |
+| `:sim lmsr` | Start sim in LMSR-only mode |
+
+### P2P Order Book
+
+| Command | Description |
+|---|---|
+| `:p2p create <w> <out> <$> <mcps>` | Place P2P order (wallet# outcome amount mcps) |
+| `:p2p cancel <orderId>` | Cancel a P2P order |
+| `:p2p depth` | Show order book depth in event log |
+| `:p2p auto` | Set simulation mode to P2P |
+| `:p2p mixed` | Set simulation mode to mixed (LMSR + P2P) |
 
 ### Admin
 
@@ -89,6 +102,8 @@ pnpm test:watch
 
 ## Demo Walkthrough
 
+### LMSR Mode (default)
+
 1. **Generate wallets**: `:wallets 5` — creates 5 wallets with private keys
 2. **Fund wallets**: `:fund` — funds each wallet with $50 via hub faucet
 3. **Fund market maker**: `:fund-mm 10` — funds MM with $100
@@ -97,6 +112,15 @@ pnpm test:watch
 6. **Watch**: observe the wallet table, event log, and odds updating in real time
 7. **Stop + close**: `:sim stop` then `:close`
 8. **Resolve**: `:resolve BALL` — resolves market (outcome must match current category's outcomes)
+
+### P2P Order Book Mode
+
+1. **Setup**: Follow steps 1–4 above
+2. **Start P2P sim**: `:sim p2p` — wallets place random P2P orders against each other
+3. **Manual order**: `:p2p create 0 BALL 5 0.60` — wallet #0 places a BALL order for $5 at 60 cents per share
+4. **Check depth**: `:p2p depth` — view current order book depth
+5. **Cancel**: `:p2p cancel <orderId>` — cancel a resting order
+6. **Mixed mode**: `:sim mixed` — some bets go to LMSR, some to P2P
 
 ## Simulation Config
 
@@ -108,6 +132,9 @@ pnpm test:watch
 | `delayMinMs` | `1500` | Minimum delay between bets (ms) |
 | `delayMaxMs` | `4000` | Maximum delay between bets (ms) |
 | `maxBetsPerWallet` | `3` | Max bets per wallet per simulation |
+| `mode` | `lmsr` | Betting mode: `lmsr`, `p2p`, or `mixed` |
+| `mcpsMin` | `0.30` | Minimum MCPS for P2P orders |
+| `mcpsMax` | `0.70` | Maximum MCPS for P2P orders |
 
 ### Usage Examples
 

@@ -169,6 +169,35 @@ describe('GameList', () => {
     });
   });
 
+  it('passes marketCount from API response to GameCard', async () => {
+    mockGetGames.mockResolvedValueOnce({
+      games: [{ ...baseGame, marketCount: 3 }],
+    });
+
+    render(<GameList />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('game-list')).toBeInTheDocument();
+    });
+
+    // GameCard renders marketCount in the "game-market-count" testid element
+    expect(screen.getByTestId('game-market-count')).toHaveTextContent('3 markets');
+  });
+
+  it('shows "No markets" when marketCount is 0 or missing', async () => {
+    mockGetGames.mockResolvedValueOnce({
+      games: [{ ...baseGame, marketCount: 0 }],
+    });
+
+    render(<GameList />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('game-list')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('game-market-count')).toHaveTextContent('No markets');
+  });
+
   it('re-fetches when sportId changes', async () => {
     mockGetGames.mockResolvedValue({ games: [] });
 

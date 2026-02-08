@@ -38,6 +38,31 @@ describe('Game Routes', () => {
       expect(testGame.awayTeam.abbreviation).toBe('BOS');
     });
 
+    test('includes marketCount for each game', async () => {
+      // Create markets for the default test game
+      ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'pitching');
+      ctx.marketManager.createMarket(DEFAULT_TEST_GAME_ID, 'batting');
+
+      const res = await app.inject({ method: 'GET', url: '/api/games' });
+      const body = res.json();
+
+      expect(res.statusCode).toBe(200);
+      const testGame = body.games.find((g: any) => g.id === DEFAULT_TEST_GAME_ID);
+      expect(testGame).toBeDefined();
+      expect(testGame.marketCount).toBe(2);
+    });
+
+    test('returns marketCount 0 for games with no markets', async () => {
+      const game = ctx.gameManager.createGame('soccer', 'fcb', 'rma', 'no-markets-game');
+
+      const res = await app.inject({ method: 'GET', url: '/api/games' });
+      const body = res.json();
+
+      const noMarketsGame = body.games.find((g: any) => g.id === game.id);
+      expect(noMarketsGame).toBeDefined();
+      expect(noMarketsGame.marketCount).toBe(0);
+    });
+
     test('filters games by sportId', async () => {
       ctx.gameManager.createGame('basketball', 'lal', 'gsw', 'bball-1');
       ctx.gameManager.createGame('baseball', 'lad', 'chc', 'baseball-1');

@@ -211,7 +211,11 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
 
   // Ensure connection is alive before calling a method — always does full auth
   const ensureConnected = useCallback(async () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN && signerRef.current) return;
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN &&
+      signerRef.current &&
+      expiresAtRef.current > Date.now()
+    ) return;
     if (connectPromiseRef.current) return connectPromiseRef.current;
 
     connectPromiseRef.current = authenticate().finally(() => {

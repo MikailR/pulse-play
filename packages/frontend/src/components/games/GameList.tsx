@@ -92,7 +92,7 @@ export function GameList({ className = '', sportId }: GameListProps) {
       data-testid="game-list"
     >
       {games.map((game) => (
-        <GameCard key={game.id} game={game} />
+        <GameCard key={game.id} game={game} marketCount={game.marketCount ?? 0} />
       ))}
     </div>
   );

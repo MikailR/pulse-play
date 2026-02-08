@@ -269,6 +269,58 @@ describe('useP2POrder', () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it('retries on "participant signature" error after reconnect', async () => {
+    const mockReconnect = jest.fn().mockResolvedValue(undefined);
+    setupClearnodeMock({ reconnect: mockReconnect });
+
+    mockCreateAppSession
+      .mockRejectedValueOnce(new Error('RPC error: Missing participant signature'))
+      .mockResolvedValueOnce({
+        appSessionId: '0xSESSION_RETRY',
+        version: 1,
+        status: 'open',
+      });
+
+    mockPlaceP2POrder.mockResolvedValueOnce(mockOrderResponse);
+
+    const onSuccess = jest.fn();
+    const { result } = renderHook(() =>
+      useP2POrder({ address: '0x123', marketId: 'market-1', gameId: 'game-1', onSuccess })
+    );
+
+    await act(async () => {
+      await result.current.placeOrder('BALL', 0.60, 6);
+    });
+
+    expect(mockReconnect).toHaveBeenCalledTimes(1);
+    expect(mockCreateAppSession).toHaveBeenCalledTimes(2);
+    expect(mockPlaceP2POrder).toHaveBeenCalledWith(
+      expect.objectContaining({ appSessionId: '0xSESSION_RETRY' }),
+    );
+    expect(onSuccess).toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
+  });
+
+  it('does not retry on non-signature errors', async () => {
+    const mockReconnect = jest.fn();
+    setupClearnodeMock({ reconnect: mockReconnect });
+
+    mockCreateAppSession.mockRejectedValueOnce(new Error('Network timeout'));
+
+    const onError = jest.fn();
+    const { result } = renderHook(() =>
+      useP2POrder({ address: '0x123', marketId: 'market-1', gameId: 'game-1', onError })
+    );
+
+    await act(async () => {
+      await result.current.placeOrder('BALL', 0.60, 6);
+    });
+
+    expect(mockReconnect).not.toHaveBeenCalled();
+    expect(mockCreateAppSession).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBe('Network timeout');
+  });
+
   it('sets isLoading during request', async () => {
     let resolveSession: (value: unknown) => void;
     mockCreateAppSession.mockImplementationOnce(

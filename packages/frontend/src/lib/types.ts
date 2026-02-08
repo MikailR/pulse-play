@@ -48,6 +48,7 @@ export interface Game {
   imagePath: string | null;
   metadata: string | null;
   createdAt: number;
+  marketCount?: number;
 }
 
 export interface UserStats {
