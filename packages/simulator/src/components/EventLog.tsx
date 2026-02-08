@@ -10,6 +10,15 @@ interface EventLogProps {
   isActive: boolean;
 }
 
+function tryPrettyPrintJson(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return null;
+  }
+}
+
 function getEventColor(type: string): string {
   // Hub WS event colors
   switch (type) {
@@ -50,13 +59,21 @@ export function EventLog({ events, scrollOffset, visibleCount, isActive }: Event
       </Box>
 
       {displayEvents.length > 0 ? (
-        displayEvents.map((event, idx) => (
-          <Box key={`${event.timestamp.getTime()}-${safeOffset + idx}`} gap={1}>
-            <Text color="gray">{formatTime(event.timestamp)}</Text>
-            <Text color={getEventColor(event.type)}>[{event.type}]</Text>
-            <Text>{event.message}</Text>
-          </Box>
-        ))
+        displayEvents.map((event, idx) => {
+          const prettyJson = tryPrettyPrintJson(event.message);
+          return (
+            <Box key={`${event.timestamp.getTime()}-${safeOffset + idx}`} flexDirection="column" gap={0}>
+              <Box gap={1}>
+                <Text color="gray">{formatTime(event.timestamp)}</Text>
+                <Text color={getEventColor(event.type)}>[{event.type}]</Text>
+                {prettyJson === null && <Text>{event.message}</Text>}
+              </Box>
+              {prettyJson !== null && (
+                <Text>{prettyJson}</Text>
+              )}
+            </Box>
+          );
+        })
       ) : (
         <Box>
           <Text color="gray" dimColor>

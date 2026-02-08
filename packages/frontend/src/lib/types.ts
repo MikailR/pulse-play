@@ -189,6 +189,7 @@ export interface AdminStateResponse {
   // backward compat
   priceBall: number;
   priceStrike: number;
+  pool?: PoolStats;
 }
 
 // ── WebSocket message types ──
@@ -261,6 +262,31 @@ export interface WsGameCreated {
   game: { id: string; sportId: string; status: string };
 }
 
+export interface WsLPDeposit {
+  type: 'LP_DEPOSIT';
+  address: string;
+  amount: number;
+  shares: number;
+  sharePrice: number;
+}
+
+export interface WsLPWithdrawal {
+  type: 'LP_WITHDRAWAL';
+  address: string;
+  amount: number;
+  shares: number;
+  sharePrice: number;
+}
+
+export interface WsPoolUpdate {
+  type: 'POOL_UPDATE';
+  poolValue: number;
+  totalShares: number;
+  sharePrice: number;
+  lpCount: number;
+  canWithdraw: boolean;
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -271,7 +297,61 @@ export type WsMessage =
   | WsStateSync
   | WsSessionSettled
   | WsSessionVersionUpdated
-  | WsGameCreated;
+  | WsGameCreated
+  | WsLPDeposit
+  | WsLPWithdrawal
+  | WsPoolUpdate;
+
+// ── LP (Liquidity Pool) DTOs ──
+
+export interface LPShare {
+  address: string;
+  shares: number;
+  totalDeposited: number;
+  totalWithdrawn: number;
+  firstDepositAt: number;
+  lastActionAt: number;
+  currentValue?: number | null;
+  pnl?: number | null;
+  sharePrice?: number | null;
+}
+
+export type LPEventType = 'DEPOSIT' | 'WITHDRAWAL';
+
+export interface LPEvent {
+  id: number;
+  address: string;
+  type: LPEventType;
+  amount: number;
+  shares: number;
+  sharePrice: number;
+  poolValueBefore: number;
+  poolValueAfter: number;
+  timestamp: number;
+}
+
+export interface PoolStats {
+  poolValue: number;
+  totalShares: number;
+  sharePrice: number;
+  lpCount: number;
+  canWithdraw: boolean;
+  withdrawLockReason?: string;
+}
+
+export interface LPDepositResponse {
+  success: boolean;
+  shares: number;
+  sharePrice: number;
+  poolValueAfter: number;
+}
+
+export interface LPWithdrawResponse {
+  success: boolean;
+  amount: number;
+  sharePrice: number;
+  poolValueAfter: number;
+}
 
 // ── Market Maker DTOs ──
 

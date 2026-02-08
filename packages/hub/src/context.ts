@@ -5,6 +5,7 @@ import { OracleService } from './modules/oracle/oracle.js';
 import { GameManager } from './modules/game/manager.js';
 import { TeamManager } from './modules/team/manager.js';
 import { UserTracker } from './modules/user/tracker.js';
+import { LPManager } from './modules/lp/manager.js';
 import { WsManager } from './api/ws.js';
 import { logger as defaultLogger } from './logger.js';
 import { createTestDb, seedDefaults, type DrizzleDB } from './db/index.js';
@@ -24,6 +25,8 @@ export interface AppContext {
   ws: WsManager;
   log: Logger;
   transactionFeePercent: number;
+  lpManager: LPManager;
+  lmsrSensitivityFactor: number;
   uploadsDir?: string;
 }
 
@@ -60,7 +63,7 @@ export function createTestContext(
     connect: jest.fn().mockResolvedValue(undefined),
     disconnect: jest.fn(),
     isConnected: jest.fn().mockReturnValue(true),
-    getBalance: jest.fn().mockResolvedValue('1000'),
+    getBalance: jest.fn().mockResolvedValue('1000000000'),
     requestFaucet: jest.fn().mockResolvedValue(undefined),
     submitAppState: jest.fn().mockResolvedValue({ version: 1 }),
     closeSession: jest.fn().mockResolvedValue(undefined),
@@ -84,6 +87,8 @@ export function createTestContext(
     ws: new WsManager(),
     log: defaultLogger,
     transactionFeePercent: 1,
+    lpManager: new LPManager(db),
+    lmsrSensitivityFactor: 0.01,
     ...overrides,
   };
 }

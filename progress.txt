@@ -2481,3 +2481,64 @@ Three places failed to set `adminState.gameState`:
 
 ### Files Modified
 - `packages/simulator/src/App.tsx` — All three fixes above
+
+---
+
+## Liquidity Pool Feature — Complete Implementation
+Date: 2026-02-07
+Branch: feature/liquidity-pool (worktree at ../pulse-play-liquidity-pool)
+
+### What was done (12-step plan, all steps complete):
+
+**Hub Backend (Steps 1-7):**
+1. **DB Schema** — Added `lp_shares` and `lp_events` tables with indexes; admin reset route clears LP data
+2. **LPManager Module** — Core business logic: share accounting, deposit/withdrawal, pool stats, canWithdraw lock. 30 unit tests.
+3. **AppContext + Logger** — Added `lpManager`, `lmsrSensitivityFactor` to context; LP-specific log methods
+4. **WS Message Types** — `WsLPDeposit`, `WsLPWithdrawal`, `WsPoolUpdate` interfaces + union extension
+5. **LP REST Routes** — 5 endpoints (GET stats/share/events, POST deposit/withdraw) with WS broadcasts. 21 tests.
+6. **POOL_UPDATE after Resolution** — Non-critical broadcast after market resolution; pool stats in STATE_SYNC
+7. **b-Parameter Auto-Scaling** — `b = poolValue * lmsrSensitivityFactor` for new markets; admin config endpoint extended
+
+**Frontend (Steps 8-10):**
+8. **Types + API Client** — LP types, WS types, 5 API functions (getLPStats, getLPShare, getLPEvents, depositLP, withdrawLP)
+9. **5 LP Components** — PoolStatsCard, LPPositionCard, LPDepositForm, LPWithdrawForm, LPEventHistory + tests
+10. **WS Real-Time Updates** — PoolStatsCard subscribes to POOL_UPDATE; LPPositionCard/LPEventHistory subscribe to LP_DEPOSIT/LP_WITHDRAWAL
+
+**Simulator (Step 11):**
+11. **Simulator Integration** — LP WS types, 3 formatter cases, POOL_UPDATE/LP_DEPOSIT/LP_WITHDRAWAL handling in App, pool stats display in SystemInfo
+
+**Integration Tests (Step 12):**
+12. **8 integration tests** — Full lifecycle: deposit accumulation, multi-LP, withdrawal lock/unlock, b-scaling, events audit, edge cases
+
+### Test Results (all passing):
+- Hub: 510 passed (6 skipped live), 31 suites
+- Frontend: 371 passed, 45 suites
+- Simulator: 145 passed, 5 suites
+- **Total: 1,026 tests, 0 failures**
+
+### Key Design Decisions:
+- LPManager is DB-only (no Clearnode calls) — decoupled from wallet operations
+- Deposits are trust-based (hackathon scope): frontend transfers via Clearnode, then notifies hub
+- Withdrawals: hub validates lock, records, then transfers via Clearnode (MM→user)
+- Withdrawal lock: blocked when any market OPEN or positions unsettled
+- Share price = poolValue / totalShares (default 1.0 when empty)
+- POOL_UPDATE broadcast is non-critical (try/catch) — resolution succeeds even if pool update fails
+- Events ordered by `id DESC` (not timestamp) to avoid same-millisecond ambiguity
+
+### Files Created (12 new):
+- packages/hub/src/modules/lp/{types,manager,index}.ts + manager.test.ts
+- packages/hub/src/api/lp.routes.ts + lp.routes.test.ts
+- packages/hub/src/__tests__/lp-integration.test.ts
+- packages/frontend/src/components/market-maker/{PoolStatsCard,LPPositionCard,LPDepositForm,LPWithdrawForm,LPEventHistory}.tsx + tests
+
+### Files Modified (15):
+- packages/hub/src/db/{schema,connection}.ts, db/db.test.ts
+- packages/hub/src/{context,server,logger}.ts
+- packages/hub/src/api/{types,oracle.routes,admin.routes,app}.ts + tests
+- packages/hub/src/modules/market/manager.ts + test
+- packages/frontend/src/lib/{types,api}.ts + api.test.ts
+- packages/frontend/src/app/market-maker/page.tsx
+- packages/frontend/src/components/market-maker/index.ts
+- packages/simulator/src/{types,App}.tsx
+- packages/simulator/src/utils/formatters.ts + test
+- packages/simulator/src/components/SystemInfo.tsx

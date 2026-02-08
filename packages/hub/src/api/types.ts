@@ -1,6 +1,7 @@
 import type { Outcome } from '../modules/lmsr/types.js';
 import type { MarketStatus } from '../modules/market/types.js';
 import type { SessionStatus } from '../modules/position/types.js';
+import type { PoolStats } from '../modules/lp/types.js';
 
 // ── Request DTOs ──
 
@@ -97,6 +98,7 @@ export interface AdminStateResponse {
   // backward compat
   priceBall: number;
   priceStrike: number;
+  pool?: PoolStats;
 }
 
 // ── WebSocket message types ──
@@ -112,7 +114,10 @@ export type WsMessageType =
   | 'SESSION_SETTLED'
   | 'SESSION_VERSION_UPDATED'
   | 'CONFIG_UPDATED'
-  | 'GAME_CREATED';
+  | 'GAME_CREATED'
+  | 'LP_DEPOSIT'
+  | 'LP_WITHDRAWAL'
+  | 'POOL_UPDATE';
 
 export interface WsOddsUpdate {
   type: 'ODDS_UPDATE';
@@ -210,6 +215,31 @@ export interface WsGameCreated {
   game: { id: string; sportId: string; status: string };
 }
 
+export interface WsLPDeposit {
+  type: 'LP_DEPOSIT';
+  address: string;
+  amount: number;
+  shares: number;
+  sharePrice: number;
+}
+
+export interface WsLPWithdrawal {
+  type: 'LP_WITHDRAWAL';
+  address: string;
+  amount: number;
+  shares: number;
+  sharePrice: number;
+}
+
+export interface WsPoolUpdate {
+  type: 'POOL_UPDATE';
+  poolValue: number;
+  totalShares: number;
+  sharePrice: number;
+  lpCount: number;
+  canWithdraw: boolean;
+}
+
 export type WsMessage =
   | WsOddsUpdate
   | WsMarketStatus
@@ -221,4 +251,7 @@ export type WsMessage =
   | WsSessionSettled
   | WsSessionVersionUpdated
   | WsConfigUpdated
-  | WsGameCreated;
+  | WsGameCreated
+  | WsLPDeposit
+  | WsLPWithdrawal
+  | WsPoolUpdate;

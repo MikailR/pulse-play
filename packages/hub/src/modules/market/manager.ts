@@ -39,7 +39,7 @@ export class MarketManager {
     this.defaultB = defaultB;
   }
 
-  createMarket(gameId: string, categoryId: string): Market {
+  createMarket(gameId: string, categoryId: string, b?: number): Market {
     // Look up category to determine outcome count
     const category = this.db.select().from(marketCategories)
       .where(eq(marketCategories.id, categoryId))
@@ -70,7 +70,7 @@ export class MarketManager {
       sequenceNum,
       status: 'PENDING',
       quantities: JSON.stringify(initialQuantities),
-      b: this.defaultB,
+      b: b ?? this.defaultB,
       outcome: null,
       createdAt: now,
       openedAt: null,

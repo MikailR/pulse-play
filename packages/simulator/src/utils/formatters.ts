@@ -154,6 +154,12 @@ export function formatWsMessage(msg: WsMessage): string {
       return `${truncateAddress(msg.address)} session ${truncateAddress(msg.appSessionId)} settled`;
     case 'SESSION_VERSION_UPDATED':
       return `${truncateAddress(msg.appSessionId)} → v${msg.version}`;
+    case 'LP_DEPOSIT':
+      return `${truncateAddress(msg.address)} deposited ${formatDollars(msg.amount)} (${formatShares(msg.shares)} shares @ ${formatDollars(msg.sharePrice)})`;
+    case 'LP_WITHDRAWAL':
+      return `${truncateAddress(msg.address)} withdrew ${formatDollars(msg.amount)} (${formatShares(msg.shares)} shares @ ${formatDollars(msg.sharePrice)})`;
+    case 'POOL_UPDATE':
+      return `Pool: ${formatDollars(msg.poolValue)} | ${formatShares(msg.totalShares)} shares | ${formatDollars(msg.sharePrice)}/share`;
     default:
       return JSON.stringify(msg);
   }

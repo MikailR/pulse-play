@@ -76,6 +76,16 @@ describe('MarketManager', () => {
       expect(batting.sequenceNum).toBe(1);
     });
 
+    test('createMarket with explicit b uses that value', () => {
+      const market = manager.createMarket(GAME_ID, CATEGORY_ID, 42);
+      expect(market.b).toBe(42);
+    });
+
+    test('createMarket without b uses defaultB', () => {
+      const market = manager.createMarket(GAME_ID, CATEGORY_ID);
+      expect(market.b).toBe(100); // defaultB = 100 from constructor
+    });
+
     test('initializes quantities length from category outcomes', () => {
       // pitching has ["BALL","STRIKE"] → 2 outcomes
       const pitchingMarket = manager.createMarket(GAME_ID, 'pitching');

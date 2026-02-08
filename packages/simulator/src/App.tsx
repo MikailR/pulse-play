@@ -22,6 +22,7 @@ import type {
   EventLogEntry,
   WsMessage,
   AdminStateResponse,
+  PoolStats,
   SimWalletRow,
   SimStatus,
   SimConfig,
@@ -67,6 +68,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
   const [results, setResults] = useState<SimResults | null>(null);
   const [mmBalance, setMmBalance] = useState<string | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [poolStats, setPoolStats] = useState<PoolStats | null>(null);
 
   // UI state
   const [uiMode, setUiMode] = useState<UIMode>('normal');
@@ -818,6 +820,10 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             gameState: msg.state.gameState,
           };
         });
+        // Extract pool stats from STATE_SYNC if available
+        if (msg.state.pool) {
+          setPoolStats(msg.state.pool);
+        }
         break;
       case 'ODDS_UPDATE':
         // Only apply if this update is for our tracked market
@@ -950,6 +956,20 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
             .catch(() => { /* non-fatal */ });
         }
         break;
+      case 'LP_DEPOSIT':
+      case 'LP_WITHDRAWAL':
+        // Logged via addEvent in the message drain loop; refresh MM balance
+        refreshMMBalance();
+        break;
+      case 'POOL_UPDATE':
+        setPoolStats({
+          poolValue: msg.poolValue,
+          totalShares: msg.totalShares,
+          sharePrice: msg.sharePrice,
+          lpCount: msg.lpCount,
+          canWithdraw: msg.canWithdraw,
+        });
+        break;
     }
   }, [walletManager, clearnodePool, refreshMMBalance]);
 
@@ -1071,6 +1091,7 @@ export function App({ wsUrl, hubRestUrl, clearnodeUrl }: AppProps) {
                 wsConnected={connected}
                 wsError={wsError}
                 state={adminState}
+                poolStats={poolStats}
               />
               <MarketPanel
                 state={adminState}

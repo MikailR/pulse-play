@@ -18,6 +18,8 @@ describe('DB Module', () => {
       const names = tables.map((t) => t.name).sort();
       expect(names).toEqual([
         'games',
+        'lp_events',
+        'lp_shares',
         'market_categories',
         'markets',
         'positions',
@@ -45,6 +47,15 @@ describe('DB Module', () => {
       expect(names).toContain('idx_positions_market');
       expect(names).toContain('idx_positions_address');
       expect(names).toContain('idx_positions_session');
+    });
+
+    it('creates indexes on lp_events table', () => {
+      const indexes = db.all<{ name: string }>(
+        sql`SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='lp_events' AND name NOT LIKE 'sqlite_%'`
+      );
+      const names = indexes.map((i) => i.name).sort();
+      expect(names).toContain('idx_lp_events_address');
+      expect(names).toContain('idx_lp_events_type');
     });
 
     it('creates indexes on users and settlements tables', () => {

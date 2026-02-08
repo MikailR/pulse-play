@@ -4,7 +4,7 @@ import type { GameStateRequest, OutcomeRequest } from './types.js';
 import type { Outcome } from '../modules/lmsr/types.js';
 import { getPrices } from '../modules/lmsr/engine.js';
 import { toMicroUnits, ASSET } from '../utils/units.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { marketCategories } from '../db/schema.js';
 import { encodeSessionData, type SessionDataV3 } from '../modules/clearnode/session-data.js';
 
@@ -45,7 +45,19 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
       return reply.status(400).send({ error: 'A market is already OPEN' });
     }
 
-    const created = ctx.marketManager.createMarket(gameId, categoryId);
+    // Auto-scale b parameter from pool value
+    let bParam: number | undefined;
+    try {
+      const balance = await ctx.clearnodeClient.getBalance();
+      const poolValue = parseFloat(balance) / 1_000_000;
+      if (poolValue > 0) {
+        bParam = poolValue * ctx.lmsrSensitivityFactor;
+      }
+    } catch {
+      // Balance unavailable — use default b
+    }
+
+    const created = ctx.marketManager.createMarket(gameId, categoryId, bParam);
     const market = ctx.marketManager.openMarket(created.id);
 
     ctx.ws.broadcast({
@@ -321,6 +333,30 @@ export function registerOracleRoutes(app: FastifyInstance, ctx: AppContext): voi
     });
 
     ctx.log.broadcast('MARKET_STATUS', ctx.ws.getConnectionCount());
+
+    // Broadcast pool update after resolution (non-critical)
+    try {
+      const balance = await ctx.clearnodeClient.getBalance();
+      const poolValue = parseFloat(balance) / 1_000_000;
+      const allMarkets = ctx.marketManager.getAllMarkets();
+      const openMarkets = allMarkets.some((m) => m.status === 'OPEN');
+      const unsettledResult = ctx.db.all<{ c: number }>(
+        sql`SELECT COUNT(*) as c FROM positions WHERE session_status = 'open'`
+      );
+      const unsettled = (unsettledResult[0]?.c ?? 0) > 0;
+      const stats = ctx.lpManager.getPoolStats(poolValue, openMarkets, unsettled);
+      ctx.ws.broadcast({
+        type: 'POOL_UPDATE',
+        poolValue: stats.poolValue,
+        totalShares: stats.totalShares,
+        sharePrice: stats.sharePrice,
+        lpCount: stats.lpCount,
+        canWithdraw: stats.canWithdraw,
+      });
+      ctx.log.lpPoolUpdate(stats.poolValue, stats.totalShares, stats.sharePrice);
+    } catch (err) {
+      ctx.log.error('pool-update-after-resolution', err);
+    }
 
     return {
       success: true,
