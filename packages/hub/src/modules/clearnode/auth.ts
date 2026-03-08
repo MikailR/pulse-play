@@ -11,6 +11,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { WalletClient } from "viem";
 import { sendAndWait } from "./rpc.js";
+import { getNetworkConfig } from "./network-config.js";
 
 interface AuthConfig {
   scope: string;
@@ -22,7 +23,7 @@ interface AuthConfig {
 const DEFAULT_AUTH_CONFIG: AuthConfig = {
   scope: "console",
   application: "pulse-play",
-  allowances: [{ asset: "ytest.usd", amount: "1000000000" }],
+  allowances: [{ asset: getNetworkConfig().asset, amount: "1000000000" }],
   expireSeconds: 3600,
 };
 

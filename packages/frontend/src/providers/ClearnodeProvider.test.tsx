@@ -37,9 +37,13 @@ jest.mock('@/lib/config', () => ({
   CLEARNODE_URL: 'wss://test-clearnode.com/ws',
   PRIVATE_KEY: '0x' + 'ab'.repeat(32),
   WALLET_MODE: 'private-key',
+  NETWORK_MODE: 'sandbox',
+  IS_SANDBOX: true,
   HUB_REST_URL: 'http://localhost:3001',
   HUB_WS_URL: 'ws://localhost:3001/ws',
   CHAIN_ID: 11155111,
+  ASSET: 'ytest.usd',
+  CHALLENGE_PERIOD: 3600,
 }));
 
 // Instead of using the real WagmiProvider (which has complex internal logic),

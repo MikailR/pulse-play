@@ -1,7 +1,8 @@
 import WebSocket from "ws";
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { sepolia } from "viem/chains";
+import { sepolia, base } from "viem/chains";
+import { getNetworkConfig } from "./network-config.js";
 import {
   createGetLedgerBalancesMessage,
   parseGetLedgerBalancesResponse,
@@ -67,9 +68,10 @@ export class ClearnodeClient {
     });
 
     const account = privateKeyToAccount(this.config.mmPrivateKey);
+    const chain = getNetworkConfig().chainId === 8453 ? base : sepolia;
     const walletClient = createWalletClient({
       account,
-      chain: sepolia,
+      chain,
       transport: http(),
     });
 
@@ -105,7 +107,7 @@ export class ClearnodeClient {
   }
 
   /** Get the MM's unified balance for a given asset. */
-  async getBalance(asset = "ytest.usd"): Promise<string> {
+  async getBalance(asset = getNetworkConfig().asset): Promise<string> {
     await this.ensureConnected();
 
     const msg = await createGetLedgerBalancesMessage(this.signer!);
@@ -181,7 +183,7 @@ export class ClearnodeClient {
         participants: params.definition.participants,
         weights: params.definition.weights,
         quorum: params.definition.quorum,
-        challenge: params.definition.challenge,
+        challenge: params.definition.challenge ?? getNetworkConfig().challengePeriod,
         nonce: params.definition.nonce ?? Date.now(),
         application: this.config.application,
       },

@@ -3,9 +3,13 @@ import type { AppContext } from '../context.js';
 import type { FaucetRequest, MMFaucetRequest } from './types.js';
 import { requestFaucetQueued as requestFaucet } from '../modules/clearnode/faucet.js';
 import { broadcastPoolUpdate } from './pool-update.js';
+import { NETWORK_MODE } from '../modules/clearnode/network-config.js';
 
 export function registerFaucetRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post<{ Body: FaucetRequest }>('/api/faucet/user', async (req, reply) => {
+    if (NETWORK_MODE === 'mainnet') {
+      return reply.status(403).send({ error: 'Faucet is only available in sandbox mode' });
+    }
     const body = req.body ?? {} as any;
     const { address } = body;
     const count = body.count ?? 1;
@@ -39,6 +43,9 @@ export function registerFaucetRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   app.post<{ Body: MMFaucetRequest }>('/api/faucet/mm', async (req, reply) => {
+    if (NETWORK_MODE === 'mainnet') {
+      return reply.status(403).send({ error: 'Faucet is only available in sandbox mode' });
+    }
     const body = req.body ?? {} as any;
     const count = body.count ?? 1;
 

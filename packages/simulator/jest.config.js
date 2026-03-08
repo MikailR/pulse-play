@@ -1,3 +1,6 @@
+// Ensure tests run in sandbox mode
+process.env.NETWORK_MODE = 'sandbox';
+
 /** @type {import('jest').Config} */
 export default {
   preset: 'ts-jest/presets/default-esm',

@@ -21,6 +21,7 @@ import {
 } from '@erc7824/nitrolite';
 import type { Address, Hex } from 'viem';
 import { sendAndWaitBrowser } from './rpc';
+import { CHALLENGE_PERIOD } from '@/lib/config';
 
 // ── Param / result types ──────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ export async function createAppSession(
       participants: [userAddress, params.counterparty],
       weights: [0, 100],
       quorum: 100,
-      challenge: params.challenge ?? 3600,
+      challenge: params.challenge ?? CHALLENGE_PERIOD,
       nonce: Date.now(),
       application: params.application ?? 'pulse-play',
     },

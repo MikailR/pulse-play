@@ -3039,3 +3039,82 @@ Replaced the 3-paragraph placeholder README with a comprehensive developer-onboa
 - Testing instructions with maxWorkers tip
 
 All env var names, defaults, script names, and package details verified against source.
+
+---
+Auto-appended on 2026-03-08 14:06
+Git status:  1 file changed, 3 insertions(+)
+Last commit: 0ede3ac Revamp README.md for comprehensive developer onboarding
+
+---
+Auto-appended on 2026-03-08 14:08
+Git status:  1 file changed, 8 insertions(+)
+Last commit: 0ede3ac Revamp README.md for comprehensive developer onboarding
+
+---
+
+## Mainnet Deployment Support: NETWORK_MODE Toggle
+Date: 2026-03-08
+
+### What was done:
+Migrated PulsePlay from hardcoded Yellow Network sandbox to env-driven `NETWORK_MODE=mainnet|sandbox` toggle.
+
+1. **New file**: `packages/hub/src/modules/clearnode/network-config.ts` — centralized network config (clearnodeUrl, asset, chainId, challengePeriod, faucetUrl)
+2. **New file**: `packages/simulator/src/core/network-config.ts` — same config for simulator
+3. **Hub changes**:
+   - `server.ts` — uses networkConfig for asset/URL/faucetUrl defaults, logs network mode at startup
+   - `auth.ts` — dynamic asset in DEFAULT_AUTH_CONFIG
+   - `client.ts` — dynamic chain (Base vs Sepolia), dynamic asset in getBalance()
+   - `units.ts` — ASSET from networkConfig
+   - `faucet.routes.ts` — 403 guard on mainnet
+   - `.env` — added NETWORK_MODE=sandbox
+   - `.env.example` — created with documented mainnet/sandbox values
+4. **Frontend changes**:
+   - `config.ts` — added NETWORK_MODE, IS_SANDBOX, ASSET, CHALLENGE_PERIOD, dynamic CHAIN_ID and CLEARNODE_URL
+   - `WagmiProvider.tsx` — dynamic chain (Base vs Sepolia)
+   - `ClearnodeProvider.tsx` — dynamic asset in auth allowances and balance lookup, dynamic chain
+   - `auth.ts` — dynamic asset in DEFAULT_AUTH_CONFIG
+   - `methods.ts` — dynamic CHALLENGE_PERIOD
+   - `units.ts` — ASSET from config
+   - `AccountFaucetCard.tsx` — mainnet guard (shows message instead of faucet)
+   - `MMFaucetCard.tsx` — same mainnet guard
+   - `AccountBalanceCard.tsx` — dynamic asset label
+   - `.env.local` — added NEXT_PUBLIC_NETWORK_MODE=sandbox
+   - `.env.local.example` — updated with NETWORK_MODE
+5. **Simulator changes**:
+   - `clearnode-pool.ts` — dynamic chain, asset, challengePeriod
+   - `clearnode/auth.ts` — dynamic asset
+   - `utils/units.ts` — ASSET from networkConfig
+   - `index.tsx` — dynamic default clearnodeUrl
+6. **Test infrastructure**:
+   - All 3 jest configs set NETWORK_MODE=sandbox
+   - Added `base` chain to frontend wagmi chains mock
+   - Updated 7 config mock objects with ASSET, NETWORK_MODE, IS_SANDBOX, CHALLENGE_PERIOD
+7. **README.md** — added Mainnet Deployment section, updated env var tables
+
+### Test results:
+- Hub: 612 passed (34 suites)
+- Frontend: 436 passed (51 suites)
+- Simulator: 165 passed (5 suites)
+- Hub build: clean
+- Simulator build: clean
+- Frontend build: pre-existing lint errors (OrderBookTable.tsx, useP2POrder.ts) — not from this change
+
+### Network config summary:
+| Setting | Sandbox | Mainnet |
+|---------|---------|---------|
+| Chain | Sepolia (11155111) | Base (8453) |
+| Asset | ytest.usd | usdc |
+| Clearnode URL | wss://clearnet-sandbox.yellow.com/ws | wss://clearnet.yellow.com/ws |
+| Challenge period | 3600s (1hr) | 86400s (24hr) |
+| Faucet | Available | Disabled (403) |
+
+### Manual steps still needed:
+1. Generate new MM private key for mainnet (DO NOT reuse sandbox key)
+2. Fund MM wallet with USDC on Base (custody contract: 0x490fb189DdE3a01B00be9BA5F41e3447FbC838b6)
+3. Set NETWORK_MODE=mainnet in hub and frontend env files
+4. Test mainnet connection end-to-end
+
+---
+Auto-appended on 2026-03-08 14:49
+Git status:  32 files changed, 293 insertions(+), 44 deletions(-)
+Last commit: 0ede3ac Revamp README.md for comprehensive developer onboarding

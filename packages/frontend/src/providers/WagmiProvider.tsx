@@ -10,20 +10,23 @@ import {
   useDisconnect,
   injected,
 } from 'wagmi';
-import { sepolia } from 'wagmi/chains';
+import { sepolia, base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { privateKeyToAccount } from 'viem/accounts';
-import { PRIVATE_KEY, WALLET_MODE, type WalletMode } from '@/lib/config';
+import { PRIVATE_KEY, WALLET_MODE, NETWORK_MODE, type WalletMode } from '@/lib/config';
 
 // Create account from private key if provided (for private-key mode)
 const privateKeyAccount = PRIVATE_KEY ? privateKeyToAccount(PRIVATE_KEY) : undefined;
 
+// Select chain based on network mode
+const activeChain = NETWORK_MODE === 'mainnet' ? base : sepolia;
+
 // Configure wagmi - include injected connector for MetaMask mode
 export const wagmiConfig = createConfig({
-  chains: [sepolia],
+  chains: [activeChain],
   connectors: WALLET_MODE === 'metamask' ? [injected()] : [],
   transports: {
-    [sepolia.id]: http(),
+    [activeChain.id]: http(),
   },
 });
 

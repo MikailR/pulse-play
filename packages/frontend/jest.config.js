@@ -1,3 +1,6 @@
+// Ensure tests run in sandbox mode
+process.env.NEXT_PUBLIC_NETWORK_MODE = 'sandbox';
+
 const nextJest = require('next/jest');
 
 const createJestConfig = nextJest({

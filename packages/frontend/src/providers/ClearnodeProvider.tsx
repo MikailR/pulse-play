@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { sepolia } from 'viem/chains';
+import { sepolia, base } from 'viem/chains';
 import { useWalletClient } from 'wagmi';
 import {
   createGetConfigMessageV2,
@@ -30,7 +30,7 @@ import {
   getConfig as getConfigFn,
 } from '@/lib/clearnode/methods';
 import type { ClearnodeStatus, ClearnodeContextValue } from '@/lib/clearnode/types';
-import { CLEARNODE_URL, PRIVATE_KEY } from '@/lib/config';
+import { CLEARNODE_URL, PRIVATE_KEY, ASSET, NETWORK_MODE } from '@/lib/config';
 
 const notConnectedError = () => { throw new Error('Clearnode is not connected'); };
 
@@ -111,9 +111,10 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       // Get or create the wallet client for signing
       let walletClient;
       if (mode === 'private-key' && PRIVATE_KEY) {
+        const chain = NETWORK_MODE === 'mainnet' ? base : sepolia;
         walletClient = createWalletClient({
           account: privateKeyToAccount(PRIVATE_KEY),
-          chain: sepolia,
+          chain,
           transport: http(),
         });
       } else {
@@ -125,7 +126,7 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       }
 
       const result = await authenticateBrowser(newWs, walletClient, {
-        allowances: [{ asset: 'ytest.usd', amount: String(allowanceAmountRef.current * 1_000_000) }],
+        allowances: [{ asset: ASSET, amount: String(allowanceAmountRef.current * 1_000_000) }],
       });
       // setSigner(result.signer);
       setSigner(() => result.signer);
@@ -154,7 +155,7 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
         const raw = await sendAndWaitBrowser(newWs, msg, 'get_ledger_balances');
         const response = parseGetLedgerBalancesResponse(raw);
         const entry = response.params.ledgerBalances.find(
-          (b: { asset: string; amount: string }) => b.asset === 'ytest.usd',
+          (b: { asset: string; amount: string }) => b.asset === ASSET,
         );
         setBalance(entry ? entry.amount : '0');
       } catch {
@@ -238,7 +239,7 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
       const raw = await sendAndWaitBrowser(wsRef.current, msg, 'get_ledger_balances');
       const response = parseGetLedgerBalancesResponse(raw);
       const entry = response.params.ledgerBalances.find(
-        (b: { asset: string; amount: string }) => b.asset === 'ytest.usd',
+        (b: { asset: string; amount: string }) => b.asset === ASSET,
       );
       setBalance(entry ? entry.amount : '0');
     } catch {

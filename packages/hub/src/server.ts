@@ -15,6 +15,7 @@ import { UserTracker } from './modules/user/tracker.js';
 import { OrderBookManager } from './modules/orderbook/manager.js';
 import { LPManager } from './modules/lp/manager.js';
 import { ClearnodeClient } from './modules/clearnode/client.js';
+import { getNetworkConfig, NETWORK_MODE } from './modules/clearnode/network-config.js';
 import { OracleService } from './modules/oracle/oracle.js';
 import { WsManager } from './api/ws.js';
 import { logger } from './logger.js';
@@ -29,12 +30,15 @@ async function main() {
   const db = createDb(DB_PATH);
   seedDefaults(db);
 
+  const networkConfig = getNetworkConfig();
+  console.log(`[PulsePlay] Network mode: ${NETWORK_MODE} (chain ${networkConfig.chainId}, asset: ${networkConfig.asset})`);
+
   const clearnodeClient = new ClearnodeClient({
-    url: process.env.CLEARNODE_URL ?? 'wss://clearnode.yellow.com/ws',
+    url: process.env.CLEARNODE_URL ?? networkConfig.clearnodeUrl,
     mmPrivateKey: (process.env.MM_PRIVATE_KEY ?? '0x') as `0x${string}`,
-    application: process.env.APPLICATION_NAME ?? '0x',
-    allowances: [{ asset: 'ytest.usd', amount: String(100_000 * 1_000_000) }],
-    faucetUrl: process.env.FAUCET_URL ?? 'https://faucet.yellow.com',
+    application: process.env.APPLICATION_NAME ?? 'pulse-play',
+    allowances: [{ asset: networkConfig.asset, amount: String(100_000 * 1_000_000) }],
+    faucetUrl: process.env.FAUCET_URL ?? networkConfig.faucetUrl ?? '',
   });
 
   const marketManager = new MarketManager(db);

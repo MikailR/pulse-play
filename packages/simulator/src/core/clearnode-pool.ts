@@ -1,7 +1,8 @@
 import WebSocket from 'ws';
 import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { sepolia } from 'viem/chains';
+import { sepolia, base } from 'viem/chains';
+import { getNetworkConfig } from './network-config.js';
 import {
   createAppSessionMessage,
   parseCreateAppSessionResponse,
@@ -136,12 +137,12 @@ export class ClearnodePool {
         participants: [bettorAddress, mmAddress],
         weights: [0, 100],
         quorum: 100,
-        challenge: 3600,
+        challenge: getNetworkConfig().challengePeriod,
         nonce: Date.now(),
         application: this.config.application ?? 'pulse-play',
       },
       allocations: [
-        { asset: 'ytest.usd', amount, participant: bettorAddress },
+        { asset: getNetworkConfig().asset, amount, participant: bettorAddress },
       ],
       session_data: sessionData,
     });
@@ -160,7 +161,7 @@ export class ClearnodePool {
    * Fetch the Clearnode ledger balance for a wallet.
    * Auto-connects the wallet if not already connected.
    */
-  async getBalance(address: Address, asset = 'ytest.usd'): Promise<string> {
+  async getBalance(address: Address, asset = getNetworkConfig().asset): Promise<string> {
     await this.ensureConnected(address);
 
     const conn = this.connections.get(address.toLowerCase())!;
@@ -217,9 +218,10 @@ export class ClearnodePool {
       });
 
       const account = privateKeyToAccount(conn.privateKey);
+      const chain = getNetworkConfig().chainId === 8453 ? base : sepolia;
       const walletClient = createWalletClient({
         account,
-        chain: sepolia,
+        chain,
         transport: http(),
       });
 

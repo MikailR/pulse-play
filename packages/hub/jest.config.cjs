@@ -1,5 +1,8 @@
 const path = require('path');
 
+// Ensure tests run in sandbox mode
+process.env.NETWORK_MODE = 'sandbox';
+
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   testEnvironment: 'node',

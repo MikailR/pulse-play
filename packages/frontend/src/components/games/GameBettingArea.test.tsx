@@ -56,6 +56,10 @@ jest.mock('@/hooks/useClearnode', () => ({
 const testGlobals = globalThis as typeof globalThis & { __TEST_MM_ADDRESS__?: string };
 jest.mock('@/lib/config', () => ({
   get MM_ADDRESS() { return testGlobals.__TEST_MM_ADDRESS__; },
+  ASSET: 'ytest.usd',
+  CHALLENGE_PERIOD: 3600,
+  NETWORK_MODE: 'sandbox',
+  IS_SANDBOX: true,
 }));
 
 jest.mock('@/lib/api');

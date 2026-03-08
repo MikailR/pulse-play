@@ -6,9 +6,11 @@ import { App } from './App.js';
 // Parse CLI arguments
 const args = process.argv.slice(2);
 
+import { getNetworkConfig, NETWORK_MODE } from './core/network-config.js';
+
 // Default URLs
 let hubUrl = 'http://localhost:3001';
-let clearnodeUrl = 'wss://clearnet-sandbox.yellow.com/ws';
+let clearnodeUrl: string = getNetworkConfig().clearnodeUrl;
 
 // Check for help flag
 if (args.includes('--help') || args.includes('-h')) {

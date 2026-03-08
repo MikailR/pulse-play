@@ -1,6 +1,7 @@
 'use client';
 
 import { useClearnode } from '@/providers/ClearnodeProvider';
+import { ASSET } from '@/lib/config';
 
 interface AccountBalanceCardProps {
   className?: string;
@@ -40,7 +41,7 @@ export function AccountBalanceCard({ className = '' }: AccountBalanceCardProps) 
       <div className="text-3xl font-bold text-text-primary" data-testid="account-balance">
         ${formatBalance(balance ?? '0')}
       </div>
-      <p className="text-xs text-text-muted mt-1">ytest.usd</p>
+      <p className="text-xs text-text-muted mt-1">{ASSET}</p>
     </div>
   );
 }

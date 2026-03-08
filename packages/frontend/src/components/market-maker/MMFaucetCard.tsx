@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { requestMMFaucet } from '@/lib/api';
+import { IS_SANDBOX, ASSET } from '@/lib/config';
 
 interface MMFaucetCardProps {
   className?: string;
@@ -64,12 +65,23 @@ export function MMFaucetCard({ className = '', onFunded }: MMFaucetCardProps) {
     }
   };
 
+  if (!IS_SANDBOX) {
+    return (
+      <div className={`bg-surface-raised border border-border rounded-lg p-6 ${className}`} data-testid="mm-faucet-card">
+        <h2 className="text-sm font-mono uppercase tracking-wider text-text-secondary mb-4">Fund Market Maker</h2>
+        <p className="text-sm text-text-muted">
+          Faucet is only available in sandbox mode. Deposit {ASSET.toUpperCase()} on Base to fund the market maker.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className={`bg-surface-raised border border-border rounded-lg p-6 ${className}`} data-testid="mm-faucet-card">
       <h2 className="text-sm font-mono uppercase tracking-wider text-text-secondary mb-4">Fund Market Maker</h2>
 
       <div className="mb-4">
-        <label className="block text-xs font-mono uppercase tracking-wider text-text-muted mb-2">Select Amount (ytest.usdc)</label>
+        <label className="block text-xs font-mono uppercase tracking-wider text-text-muted mb-2">Select Amount ({ASSET})</label>
         <div className="grid grid-cols-4 gap-2">
           {PRESET_AMOUNTS.map((amount) => (
             <button

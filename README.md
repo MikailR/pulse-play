@@ -43,6 +43,7 @@ pnpm install
 Create `packages/hub/.env` (gitignored — must be created manually):
 
 ```env
+NETWORK_MODE=sandbox
 CLEARNODE_URL=wss://clearnet-sandbox.yellow.com/ws
 MM_PRIVATE_KEY=0x<your-market-maker-private-key>
 APPLICATION_NAME=pulse-play
@@ -98,7 +99,7 @@ cd packages/simulator
 pnpm dev [hubUrl] [clearnodeUrl]
 ```
 
-Defaults: `http://localhost:3001` and `wss://clearnet-sandbox.yellow.com/ws`
+Defaults: `http://localhost:3001` and Clearnode URL from `NETWORK_MODE` (sandbox: `wss://clearnet-sandbox.yellow.com/ws`, mainnet: `wss://clearnet.yellow.com/ws`)
 
 ## Environment Variables
 
@@ -106,12 +107,13 @@ Defaults: `http://localhost:3001` and `wss://clearnet-sandbox.yellow.com/ws`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `NETWORK_MODE` | `mainnet` | Network mode: `mainnet` (Base/USDC) or `sandbox` (Sepolia/ytest.usd) |
 | `PORT` | `3001` | HTTP server port |
 | `DB_PATH` | `../data/pulseplay.db` | SQLite database file path (relative to `src/`) |
-| `CLEARNODE_URL` | `wss://clearnode.yellow.com/ws` | Yellow Network ClearNode WebSocket URL |
+| `CLEARNODE_URL` | *(from NETWORK_MODE)* | Yellow Network ClearNode WebSocket URL |
 | `MM_PRIVATE_KEY` | `0x` | Market maker wallet private key (ECDSA) |
-| `APPLICATION_NAME` | `0x` | Application identifier for ClearNode auth |
-| `FAUCET_URL` | `https://faucet.yellow.com` | Sandbox faucet endpoint for test tokens |
+| `APPLICATION_NAME` | `pulse-play` | Application identifier for ClearNode auth |
+| `FAUCET_URL` | *(from NETWORK_MODE)* | Sandbox faucet endpoint for test tokens |
 | `TRANSACTION_FEE_PERCENT` | `1` | Fee percentage applied to bets |
 | `LMSR_SENSITIVITY_FACTOR` | `0.01` | LMSR liquidity parameter (b) sensitivity |
 
@@ -119,9 +121,10 @@ Defaults: `http://localhost:3001` and `wss://clearnet-sandbox.yellow.com/ws`
 
 | Variable | Description |
 |----------|-------------|
+| `NEXT_PUBLIC_NETWORK_MODE` | Network mode: `mainnet` or `sandbox` (default: `mainnet`) |
 | `NEXT_PUBLIC_HUB_REST_URL` | Hub REST API URL (default: `http://localhost:3001`) |
 | `NEXT_PUBLIC_HUB_WS_URL` | Hub WebSocket URL (default: `ws://localhost:3001/ws`) |
-| `NEXT_PUBLIC_CLEARNODE_URL` | Yellow Network ClearNode WebSocket URL |
+| `NEXT_PUBLIC_CLEARNODE_URL` | Yellow Network ClearNode WebSocket URL (overrides NETWORK_MODE default) |
 | `NEXT_PUBLIC_WALLET_MODE` | `metamask` or `private-key` |
 | `NEXT_PUBLIC_PRIVATE_KEY` | Test wallet private key (for `private-key` mode only) |
 | `NEXT_PUBLIC_MM_ADDRESS` | Market maker Ethereum address (must match hub's `MM_PRIVATE_KEY`) |
@@ -248,3 +251,40 @@ Watch mode is available in all packages:
 ```bash
 pnpm test:watch
 ```
+
+## Mainnet Deployment
+
+PulsePlay supports both **sandbox** (Sepolia testnet) and **mainnet** (Base) via the `NETWORK_MODE` env var.
+
+### Network Modes
+
+| Setting | Sandbox | Mainnet |
+|---------|---------|---------|
+| Chain | Sepolia (11155111) | Base (8453) |
+| Asset | `ytest.usd` | `usdc` |
+| Clearnode URL | `wss://clearnet-sandbox.yellow.com/ws` | `wss://clearnet.yellow.com/ws` |
+| Faucet | Available | Disabled |
+| Challenge period | 1 hour | 24 hours |
+
+### Deploying to Mainnet
+
+1. **Generate a new MM private key** — do NOT reuse sandbox test keys
+2. **Fund the MM wallet with USDC on Base** — deposit into Yellow Network custody contract (`0x490fb189DdE3a01B00be9BA5F41e3447FbC838b6`)
+3. **Set environment variables:**
+
+   Hub (`packages/hub/.env`):
+   ```env
+   NETWORK_MODE=mainnet
+   MM_PRIVATE_KEY=0x<your_mainnet_key>
+   APPLICATION_NAME=pulse-play
+   ```
+
+   Frontend (`packages/frontend/.env.local`):
+   ```env
+   NEXT_PUBLIC_NETWORK_MODE=mainnet
+   NEXT_PUBLIC_MM_ADDRESS=0x<your_mm_address>
+   NEXT_PUBLIC_WALLET_MODE=metamask
+   ```
+
+4. **Start the hub and frontend** with the same commands as development
+5. **Verify** — the hub logs will show `Network mode: mainnet (chain 8453, asset: usdc)`

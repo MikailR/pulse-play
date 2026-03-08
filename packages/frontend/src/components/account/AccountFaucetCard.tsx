@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useWallet } from '@/providers/WagmiProvider';
 import { useClearnode } from '@/providers/ClearnodeProvider';
 import { requestUserFaucet } from '@/lib/api';
+import { IS_SANDBOX, ASSET } from '@/lib/config';
 
 interface AccountFaucetCardProps {
   className?: string;
@@ -70,12 +71,23 @@ export function AccountFaucetCard({ className = '', onFunded }: AccountFaucetCar
     }
   };
 
+  if (!IS_SANDBOX) {
+    return (
+      <div className={`bg-surface-raised border border-border rounded-lg p-6 ${className}`} data-testid="account-faucet-card">
+        <h2 className="text-sm font-mono uppercase tracking-wider text-text-secondary mb-4">Fund Account</h2>
+        <p className="text-sm text-text-muted">
+          Faucet is only available in sandbox mode. Deposit {ASSET.toUpperCase()} on Base to fund your account.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className={`bg-surface-raised border border-border rounded-lg p-6 ${className}`} data-testid="account-faucet-card">
       <h2 className="text-sm font-mono uppercase tracking-wider text-text-secondary mb-4">Fund Account</h2>
 
       <div className="mb-4">
-        <label className="block text-xs font-mono uppercase tracking-wider text-text-muted mb-2">Select Amount (ytest.usd)</label>
+        <label className="block text-xs font-mono uppercase tracking-wider text-text-muted mb-2">Select Amount ({ASSET})</label>
         <div className="grid grid-cols-4 gap-2">
           {PRESET_AMOUNTS.map((amount) => (
             <button

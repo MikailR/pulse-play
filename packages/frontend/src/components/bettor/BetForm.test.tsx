@@ -44,6 +44,10 @@ jest.mock('@/hooks/useClearnode', () => ({
 
 jest.mock('@/lib/config', () => ({
   MM_ADDRESS: '0xMM' as `0x${string}`,
+  ASSET: 'ytest.usd',
+  CHALLENGE_PERIOD: 3600,
+  NETWORK_MODE: 'sandbox',
+  IS_SANDBOX: true,
 }));
 
 const mockUseSelectedMarket = SelectedMarketProvider.useSelectedMarket as jest.Mock;

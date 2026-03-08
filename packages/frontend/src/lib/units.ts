@@ -3,8 +3,10 @@
  * These helpers convert between human-readable amounts and Clearnode wire format.
  */
 
+import { ASSET as ASSET_FROM_CONFIG } from '@/lib/config';
+
 export const MICRO = 1_000_000;
-export const ASSET = 'ytest.usd';
+export const ASSET = ASSET_FROM_CONFIG;
 
 /** Convert a human-readable amount (e.g. 10.5) to a microunit string (e.g. "10500000"). */
 export function toMicroUnits(amount: number): string {

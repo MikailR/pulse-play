@@ -10,6 +10,10 @@ jest.mock('@/lib/api');
 jest.mock('@/hooks/useClearnode');
 jest.mock('@/lib/config', () => ({
   get MM_ADDRESS() { return testGlobals.__TEST_MM_ADDRESS__; },
+  ASSET: 'ytest.usd',
+  CHALLENGE_PERIOD: 3600,
+  NETWORK_MODE: 'sandbox',
+  IS_SANDBOX: true,
 }));
 
 const mockPlaceBet = api.placeBet as jest.MockedFunction<typeof api.placeBet>;
