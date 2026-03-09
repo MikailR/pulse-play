@@ -13,20 +13,19 @@ import {
 import { sepolia, base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { privateKeyToAccount } from 'viem/accounts';
-import { PRIVATE_KEY, WALLET_MODE, NETWORK_MODE, type WalletMode } from '@/lib/config';
+import { PRIVATE_KEY, WALLET_MODE, type WalletMode } from '@/lib/config';
 
 // Create account from private key if provided (for private-key mode)
 const privateKeyAccount = PRIVATE_KEY ? privateKeyToAccount(PRIVATE_KEY) : undefined;
 
-// Select chain based on network mode
-const activeChain = NETWORK_MODE === 'mainnet' ? base : sepolia;
-
-// Configure wagmi - include injected connector for MetaMask mode
+// Configure wagmi - include both chains so wallet client works regardless of
+// which network MetaMask is on. NETWORK_MODE controls Clearnode logic, not wagmi.
 export const wagmiConfig = createConfig({
-  chains: [activeChain],
+  chains: [base, sepolia],
   connectors: WALLET_MODE === 'metamask' ? [injected()] : [],
   transports: {
-    [activeChain.id]: http(),
+    [base.id]: http(),
+    [sepolia.id]: http(),
   },
 });
 

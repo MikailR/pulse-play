@@ -3,6 +3,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ClearnodeProvider, useClearnode } from './ClearnodeProvider';
 import type { WalletMode } from '@/lib/config';
+import {
+  __setMockAccountState,
+  __setMockWalletClient,
+  __resetMocks as resetWagmiMocks,
+  useSwitchChain,
+} from '@/test/mocks/wagmiModule';
 
 // Mock the clearnode lib
 const mockOpenClearnodeWs = jest.fn();
@@ -95,7 +101,7 @@ function TestWalletProvider({ children, value }: { children: React.ReactNode; va
 
 // Consumer component for testing
 function ClearnodeConsumer() {
-  const { status, error, isSessionValid, expiresAt, signer, balance, ws, allowanceAmount } = useClearnode();
+  const { status, error, isSessionValid, expiresAt, signer, balance, ws, allowanceAmount, isWrongChain } = useClearnode();
   return (
     <div>
       <span data-testid="status">{status}</span>
@@ -106,6 +112,7 @@ function ClearnodeConsumer() {
       <span data-testid="balance">{balance || 'none'}</span>
       <span data-testid="has-ws">{ws ? 'yes' : 'no'}</span>
       <span data-testid="allowance-amount">{allowanceAmount}</span>
+      <span data-testid="is-wrong-chain">{isWrongChain ? 'yes' : 'no'}</span>
     </div>
   );
 }
@@ -245,6 +252,7 @@ function createMockWs() {
 describe('ClearnodeProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetWagmiMocks();
 
     // Default mocks for successful auth flow
     const mockWs = createMockWs();
@@ -870,6 +878,152 @@ describe('ClearnodeProvider', () => {
     // Wait a tick — no crash, balance preserved from initial fetch
     await new Promise(r => setTimeout(r, 50));
     expect(screen.getByTestId('balance')).toHaveTextContent('1000000');
+  });
+
+  // ── Keepalive tests ──
+
+  // ── Chain mismatch / wallet-agnostic auth tests ──
+
+  it('auth succeeds regardless of wallet chain (no chainId dependency)', async () => {
+    // Simulate MetaMask on Sepolia (chain id 11155111) while CHAIN_ID is also 11155111 (sandbox)
+    // But the key point: useWalletClient() returns a client regardless of chain
+    const mockWalletClient = { signTypedData: jest.fn() };
+    __setMockWalletClient(mockWalletClient);
+    __setMockAccountState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      isConnected: true,
+      chain: { id: 8453, name: 'Base' }, // Different from CHAIN_ID (11155111)
+    });
+
+    renderWithProviders(<ClearnodeConsumer />, {
+      mode: 'metamask',
+      isConnected: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    expect(mockAuthenticateBrowser).toHaveBeenCalled();
+    expect(screen.getByTestId('has-signer')).toHaveTextContent('yes');
+  });
+
+  it('switchChain is called when wallet is on wrong chain', async () => {
+    const mockSwitchChain = jest.fn();
+    // Access the mock via useSwitchChain to get the current mock fn reference
+    const switchChainMock = useSwitchChain();
+    // Override switchChain directly on the returned object won't work since it's a new call
+    // Instead, we'll check that the effect fires by checking the mock from the module
+
+    const mockWalletClient = { signTypedData: jest.fn() };
+    __setMockWalletClient(mockWalletClient);
+    __setMockAccountState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      isConnected: true,
+      chain: { id: 8453, name: 'Base' }, // Wrong chain (CHAIN_ID is 11155111 in sandbox)
+    });
+
+    renderWithProviders(<ClearnodeConsumer />, {
+      mode: 'metamask',
+      isConnected: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    // The switchChain mock from wagmi should have been called with CHAIN_ID
+    const { switchChain } = useSwitchChain();
+    expect(switchChain).toHaveBeenCalledWith({ chainId: 11155111 });
+  });
+
+  it('auth still works if switchChain throws (user rejects)', async () => {
+    // Set up switchChain to throw
+    const throwingSwitchChain = jest.fn().mockImplementation(() => {
+      throw new Error('User rejected chain switch');
+    });
+    // We need to make useSwitchChain return the throwing mock
+    // Since the mock module uses a module-level variable, we use __setMockSwitchChainFn
+    // But we don't have that import yet — let's work around by making the default mock throw
+    const { switchChain: currentMock } = useSwitchChain();
+    (currentMock as jest.Mock).mockImplementation(() => {
+      throw new Error('User rejected chain switch');
+    });
+
+    const mockWalletClient = { signTypedData: jest.fn() };
+    __setMockWalletClient(mockWalletClient);
+    __setMockAccountState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      isConnected: true,
+      chain: { id: 8453, name: 'Base' },
+    });
+
+    renderWithProviders(<ClearnodeConsumer />, {
+      mode: 'metamask',
+      isConnected: true,
+    });
+
+    // Auth should still succeed despite switchChain throwing
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+    expect(screen.getByTestId('has-signer')).toHaveTextContent('yes');
+  });
+
+  it('isWrongChain is true when chain does not match CHAIN_ID', async () => {
+    const mockWalletClient = { signTypedData: jest.fn() };
+    __setMockWalletClient(mockWalletClient);
+    __setMockAccountState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      isConnected: true,
+      chain: { id: 8453, name: 'Base' }, // Wrong chain for sandbox (expects 11155111)
+    });
+
+    renderWithProviders(<ClearnodeConsumer />, {
+      mode: 'metamask',
+      isConnected: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    expect(screen.getByTestId('is-wrong-chain')).toHaveTextContent('yes');
+  });
+
+  it('isWrongChain is false when chain matches CHAIN_ID', async () => {
+    const mockWalletClient = { signTypedData: jest.fn() };
+    __setMockWalletClient(mockWalletClient);
+    __setMockAccountState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      isConnected: true,
+      chain: { id: 11155111, name: 'Sepolia' }, // Correct chain for sandbox
+    });
+
+    renderWithProviders(<ClearnodeConsumer />, {
+      mode: 'metamask',
+      isConnected: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    expect(screen.getByTestId('is-wrong-chain')).toHaveTextContent('no');
+  });
+
+  it('isWrongChain is false in private-key mode', async () => {
+    // In private-key mode, chain mismatch doesn't matter
+    renderWithProviders(<ClearnodeConsumer />, {
+      mode: 'private-key',
+      isConnected: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('connected');
+    });
+
+    expect(screen.getByTestId('is-wrong-chain')).toHaveTextContent('no');
   });
 
   // ── Keepalive tests ──

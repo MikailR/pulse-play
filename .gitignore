@@ -11,3 +11,4 @@ coverage/
 */data/
 packages/hub/uploads/*
 !packages/hub/uploads/.gitkeep
+packages/hub/data/*

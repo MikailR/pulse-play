@@ -24,6 +24,8 @@ export interface ClearnodeContextValue {
   refreshBalance: () => Promise<void>;
   reconnect: () => Promise<void>;
   disconnect: () => void;
+  isWrongChain: boolean;
+  requestChainSwitch: () => void;
   createAppSession: (params: CreateAppSessionParams) => Promise<CreateAppSessionResult>;
   closeAppSession: (params: CloseAppSessionParams) => Promise<void>;
   submitAppState: (params: SubmitAppStateParams) => Promise<{ version: number }>;

@@ -12,7 +12,7 @@ import {
 import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia, base } from 'viem/chains';
-import { useWalletClient } from 'wagmi';
+import { useWalletClient, useAccount as useWagmiAccount, useSwitchChain } from 'wagmi';
 import {
   createGetConfigMessageV2,
   createGetLedgerBalancesMessage,
@@ -30,7 +30,7 @@ import {
   getConfig as getConfigFn,
 } from '@/lib/clearnode/methods';
 import type { ClearnodeStatus, ClearnodeContextValue } from '@/lib/clearnode/types';
-import { CLEARNODE_URL, PRIVATE_KEY, ASSET, NETWORK_MODE } from '@/lib/config';
+import { CLEARNODE_URL, PRIVATE_KEY, ASSET, NETWORK_MODE, CHAIN_ID } from '@/lib/config';
 
 const notConnectedError = () => { throw new Error('Clearnode is not connected'); };
 
@@ -47,6 +47,8 @@ const ClearnodeContext = createContext<ClearnodeContextValue>({
   refreshBalance: async () => { },
   reconnect: async () => { },
   disconnect: () => { },
+  isWrongChain: false,
+  requestChainSwitch: () => { },
   createAppSession: notConnectedError,
   closeAppSession: notConnectedError,
   submitAppState: notConnectedError,
@@ -67,6 +69,8 @@ interface ClearnodeProviderProps {
 export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodeProviderProps) {
   const { address, isConnected: walletConnected, mode } = useWallet();
   const { data: wagmiWalletClient } = useWalletClient();
+  const { chain: connectedChain } = useWagmiAccount();
+  const { switchChain } = useSwitchChain();
 
   const [status, setStatus] = useState<ClearnodeStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +92,11 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
   }, [allowanceAmount]);
 
   const isSessionValid = signer !== null && expiresAt > Date.now();
+
+  const isWrongChain = mode === 'metamask'
+    && walletConnected
+    && connectedChain !== undefined
+    && connectedChain.id !== CHAIN_ID;
 
   // Core authentication function
   const authenticate = useCallback(async () => {
@@ -355,6 +364,17 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
     return () => clearInterval(interval);
   }, []);
 
+  // Prompt chain switch when wallet is on the wrong chain (non-blocking, fire-and-forget)
+  useEffect(() => {
+    if (mode !== 'metamask' || !walletConnected || !connectedChain) return;
+    if (connectedChain.id === CHAIN_ID) return;
+    try { switchChain({ chainId: CHAIN_ID }); } catch { /* user rejected — non-fatal */ }
+  }, [walletConnected, connectedChain, mode, switchChain]);
+
+  const requestChainSwitch = useCallback(() => {
+    try { switchChain?.({ chainId: CHAIN_ID }); } catch { /* non-fatal */ }
+  }, [switchChain]);
+
   const value: ClearnodeContextValue = {
     status,
     error,
@@ -368,6 +388,8 @@ export function ClearnodeProvider({ children, url = CLEARNODE_URL }: ClearnodePr
     refreshBalance,
     reconnect,
     disconnect: disconnectClearnode,
+    isWrongChain,
+    requestChainSwitch,
     createAppSession: createAppSessionCb,
     closeAppSession: closeAppSessionCb,
     submitAppState: submitAppStateCb,
